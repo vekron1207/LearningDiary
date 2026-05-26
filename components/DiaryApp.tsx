@@ -1,12 +1,35 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { PHASES, RESOURCES } from '@/lib/data';
 import type { Item, Phase, Section, StoredState } from '@/lib/types';
+import {
+  isFirebaseConfigured,
+  signInWithGoogle,
+  signOutUser,
+  onAuthChange,
+  getUserDocRef,
+  setDoc,
+  onSnapshot,
+  type User,
+} from '@/lib/firebase';
 
 const STORAGE_KEY = 'learning-diary-v2';
 
-type FilterType = 'all' | 'todo' | 'done';
+type FilterType  = 'all' | 'todo' | 'done';
+type SyncStatus  = 'idle' | 'syncing' | 'synced' | 'error';
+
+/* Unique ID per browser tab — used to detect Firestore echo from our own saves */
+const DEVICE_ID = typeof window !== 'undefined'
+  ? (() => {
+      const k = 'diary-device-id';
+      const existing = sessionStorage.getItem(k);
+      if (existing) return existing;
+      const id = Math.random().toString(36).slice(2);
+      sessionStorage.setItem(k, id);
+      return id;
+    })()
+  : 'ssr';
 
 /* ── Phase theme tokens ── */
 const PHASE_THEME: Record<string, { color: string; light: string; border: string }> = {
@@ -26,7 +49,7 @@ function getWeekNumber(startDate: string): number {
 /* ── Icons ── */
 function ExternalIcon() {
   return (
-    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
       <path d="M5 2H2C1.44772 2 1 2.44772 1 3V10C1 10.5523 1.44772 11 2 11H9C9.55228 11 10 10.5523 10 10V7M7 1H11M11 1V5M11 1L5 7"
         stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
@@ -47,6 +70,17 @@ function BulbIcon() {
     <svg width="11" height="11" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
       <path d="M8 1a5 5 0 0 1 3.47 8.53l-.47.47V12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-1.99l-.47-.48A5 5 0 0 1 8 1ZM6.5 13.5h3M7.25 13.5v1h1.5v-1"
         stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
     </svg>
   );
 }
@@ -76,9 +110,7 @@ function ItemRow({ item, checked, onToggle }: { item: Item; checked: boolean; on
       <Checkbox checked={checked} onChange={onToggle} />
       <div className="item-content">
         <div className="item-top">
-          {item.tag && (
-            <span className={`diff-badge diff-${item.tag}`}>{item.tag}</span>
-          )}
+          {item.tag && <span className={`diff-badge diff-${item.tag}`}>{item.tag}</span>}
           <span className="item-text">{item.text}</span>
           {item.url && (
             <a href={item.url} target="_blank" rel="noopener noreferrer" className="item-link" title="Open reference">
@@ -105,10 +137,10 @@ function SectionCard({
   checks: Record<string, boolean>; onItemToggle: (id: string) => void;
   filter: FilterType; phaseColor: string;
 }) {
-  const done  = section.items.filter(i => checks[i.id]).length;
-  const total = section.items.length;
+  const done    = section.items.filter(i => checks[i.id]).length;
+  const total   = section.items.length;
   const allDone = done === total;
-  const pct   = total ? Math.round((done / total) * 100) : 0;
+  const pct     = total ? Math.round((done / total) * 100) : 0;
 
   const visibleItems = section.items.filter(item => {
     if (filter === 'todo') return !checks[item.id];
@@ -161,16 +193,14 @@ function SectionCard({
 }
 
 /* ── Phase Summary Panel ── */
-function PhaseSummaryPanel({
-  phase, checks, theme,
-}: {
+function PhaseSummaryPanel({ phase, checks, theme }: {
   phase: Phase; checks: Record<string, boolean>;
   theme: { color: string; light: string; border: string };
 }) {
-  const allItems  = phase.sections.flatMap(s => s.items);
-  const done      = allItems.filter(i => checks[i.id]).length;
-  const total     = allItems.length;
-  const pct       = total ? Math.round((done / total) * 100) : 0;
+  const allItems = phase.sections.flatMap(s => s.items);
+  const done     = allItems.filter(i => checks[i.id]).length;
+  const total    = allItems.length;
+  const pct      = total ? Math.round((done / total) * 100) : 0;
 
   return (
     <div className="phase-summary" style={{ background: theme.light, borderColor: theme.border }}>
@@ -235,7 +265,19 @@ function ResourcesView({ checks, onToggle }: { checks: Record<string, boolean>; 
   );
 }
 
-/* ── Main DiaryApp ── */
+/* ── Sync dot ── */
+function SyncDot({ status }: { status: SyncStatus }) {
+  return <span className={`sync-dot ${status}`} title={
+    status === 'synced'  ? 'Synced to cloud' :
+    status === 'syncing' ? 'Saving...' :
+    status === 'error'   ? 'Sync error — data saved locally' :
+    'Not synced yet'
+  } />;
+}
+
+/* ════════════════════════════════════════════
+   MAIN COMPONENT
+   ════════════════════════════════════════════ */
 export default function DiaryApp() {
   const [checks,       setChecks]       = useState<Record<string, boolean>>({});
   const [completedAt,  setCompletedAt]  = useState<Record<string, string>>({});
@@ -245,15 +287,27 @@ export default function DiaryApp() {
   const [filter,       setFilter]       = useState<FilterType>('all');
   const [isLoaded,     setIsLoaded]     = useState(false);
 
-  /* Load from localStorage exactly once on mount */
+  /* Sync state */
+  const [user,       setUser]       = useState<User | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
+
+  /* Refs — never trigger re-renders */
+  const firestoreUnsubRef = useRef<(() => void) | null>(null);
+  const saveTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /* Tracks the JSON snapshot of the last data received from Firestore.
+     Before saving, we compare current state to this — if they match, we skip
+     the save (it was a remote update, not a local change). */
+  const lastRemoteRef = useRef<string>('');
+
+  /* ── 1. Load from localStorage on mount (client only) ── */
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const data = JSON.parse(raw) as StoredState;
-        setChecks(data.checks       ?? {});
+        setChecks(data.checks        ?? {});
         setCompletedAt(data.completedAt ?? {});
-        if (data.activeTab) setActiveTab(data.activeTab);
+        if (data.activeTab)   setActiveTab(data.activeTab);
         setOpenSections(data.openSections ?? {});
         setStartDate(data.startDate || new Date().toISOString());
       } else {
@@ -265,17 +319,103 @@ export default function DiaryApp() {
     setIsLoaded(true);
   }, []);
 
-  /* Persist to localStorage — only AFTER we have loaded (guard prevents overwriting with empty state) */
+  /* ── 2. Persist EVERYTHING to localStorage (all state, every change) ── */
   useEffect(() => {
     if (!isLoaded) return;
     try {
       const data: StoredState = { checks, completedAt, activeTab, openSections, startDate };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch {
-      /* localStorage might be full — silently ignore */
-    }
+    } catch { /* quota exceeded — silently ignore */ }
   }, [checks, completedAt, activeTab, openSections, startDate, isLoaded]);
 
+  /* ── 3. Firebase auth + Firestore real-time subscription ── */
+  useEffect(() => {
+    if (!isFirebaseConfigured || !isLoaded) return;
+
+    const unsubAuth = onAuthChange((newUser) => {
+      setUser(newUser);
+
+      /* Clean up previous subscription whenever auth changes */
+      if (firestoreUnsubRef.current) {
+        firestoreUnsubRef.current();
+        firestoreUnsubRef.current = null;
+      }
+
+      if (!newUser) { setSyncStatus('idle'); return; }
+
+      const docRef = getUserDocRef(newUser.uid);
+      if (!docRef) return;
+
+      setSyncStatus('syncing');
+
+      const unsub = onSnapshot(docRef, (snap) => {
+        if (!snap.exists()) { setSyncStatus('synced'); return; }
+        const data = snap.data();
+
+        /* Skip our own saves echoing back (same tab/device) */
+        if (data.deviceId === DEVICE_ID) { setSyncStatus('synced'); return; }
+
+        /* Capture remote snapshot BEFORE setState, so the Firestore save effect
+           sees this as "no local change needed" and skips re-saving. */
+        lastRemoteRef.current = JSON.stringify({
+          checks:      data.checks      ?? {},
+          completedAt: data.completedAt ?? {},
+          startDate:   data.startDate   ?? '',
+        });
+
+        /* Apply remote state — React 18 batches these */
+        setChecks(data.checks           ?? {});
+        setCompletedAt(data.completedAt ?? {});
+        if (data.startDate) setStartDate(data.startDate);
+        setSyncStatus('synced');
+      }, () => {
+        setSyncStatus('error');
+      });
+
+      firestoreUnsubRef.current = unsub;
+    });
+
+    return () => {
+      unsubAuth();
+      if (firestoreUnsubRef.current) firestoreUnsubRef.current();
+    };
+  }, [isLoaded]);
+
+  /* ── 4. Save checks/completedAt/startDate to Firestore (debounced 1s) ── */
+  useEffect(() => {
+    if (!isLoaded || !user || !isFirebaseConfigured) return;
+
+    const currentSnapshot = JSON.stringify({ checks, completedAt, startDate });
+
+    /* Skip if this state was just received from Firestore (not a local edit) */
+    if (currentSnapshot === lastRemoteRef.current) return;
+
+    setSyncStatus('syncing');
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+
+    saveTimerRef.current = setTimeout(async () => {
+      const docRef = getUserDocRef(user.uid);
+      if (!docRef) return;
+      try {
+        await setDoc(docRef, {
+          checks,
+          completedAt,
+          startDate,
+          deviceId:  DEVICE_ID,
+          updatedAt: new Date().toISOString(),
+        });
+        /* Record what we just saved so future echoes are ignored */
+        lastRemoteRef.current = currentSnapshot;
+        setSyncStatus('synced');
+      } catch {
+        setSyncStatus('error');
+      }
+    }, 1000);
+
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [checks, completedAt, startDate, isLoaded, user]);
+
+  /* ── Handlers ── */
   const toggleCheck = useCallback((id: string) => {
     setChecks(prev => {
       const next = { ...prev, [id]: !prev[id] };
@@ -309,30 +449,36 @@ export default function DiaryApp() {
     });
   }, []);
 
-  /* Switch tab and reset filter */
   const switchTab = useCallback((id: string) => {
     setActiveTab(id);
     setFilter('all');
   }, []);
 
-  /* Overall stats */
+  const handleSignIn = useCallback(async () => {
+    try { await signInWithGoogle(); }
+    catch { /* user cancelled */ }
+  }, []);
+
+  const handleSignOut = useCallback(async () => {
+    if (!window.confirm('Sign out? Your progress stays saved locally.')) return;
+    await signOutUser();
+    setSyncStatus('idle');
+  }, []);
+
+  /* ── Derived values ── */
   const allLearningItems = useMemo(() => PHASES.flatMap(p => p.sections.flatMap(s => s.items)), []);
-  const totalItems    = allLearningItems.length + RESOURCES.length;
-  const totalDone     = allLearningItems.filter(i => checks[i.id]).length
-                      + RESOURCES.filter(r => checks[r.id]).length;
-  const overallPct    = totalItems ? Math.round((totalDone / totalItems) * 100) : 0;
-  const currentWeek   = getWeekNumber(startDate);
+  const totalItems = allLearningItems.length + RESOURCES.length;
+  const totalDone  = allLearningItems.filter(i => checks[i.id]).length
+                   + RESOURCES.filter(r => checks[r.id]).length;
+  const overallPct = totalItems ? Math.round((totalDone / totalItems) * 100) : 0;
+  const currentWeek = getWeekNumber(startDate);
 
   const activePhase = PHASES.find(p => p.id === activeTab);
   const phaseTheme  = PHASE_THEME[activeTab] ?? PHASE_THEME['proj'];
   const anyOpen     = activePhase ? activePhase.sections.some(s => openSections[s.id]) : false;
 
   if (!isLoaded) {
-    return (
-      <div className="diary-loading">
-        <span>Loading your diary…</span>
-      </div>
-    );
+    return <div className="diary-loading">Loading your diary…</div>;
   }
 
   return (
@@ -343,12 +489,34 @@ export default function DiaryApp() {
           <div className="header-left">
             <span className="diary-title">Learning Diary</span>
             <span className="diary-subtitle">
-              Backend Eng · {currentWeek < 30 ? `Week ${currentWeek} of 30` : 'Week 30 — Final stretch!'}
+              Backend Eng · {currentWeek < 30 ? `Week ${currentWeek} of 30` : 'Week 30'}
             </span>
           </div>
-          <div className="header-right">
-            <span className="overall-pct">{overallPct}%</span>
-            <span className="overall-count">&nbsp;{totalDone}/{totalItems}</span>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div className="header-right">
+              <span className="overall-pct">{overallPct}%</span>
+              <span className="overall-count">&nbsp;{totalDone}/{totalItems}</span>
+            </div>
+
+            {/* Auth / Sync UI */}
+            {isFirebaseConfigured && (
+              <div className="sync-section">
+                {user ? (
+                  <button className="user-pill" onClick={handleSignOut} title="Click to sign out">
+                    <span className="avatar-circle">
+                      {(user.displayName ?? user.email ?? 'U')[0].toUpperCase()}
+                    </span>
+                    <SyncDot status={syncStatus} />
+                  </button>
+                ) : (
+                  <button className="sync-btn" onClick={handleSignIn}>
+                    <GoogleIcon />
+                    Sync
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
         <div className="header-progress">
@@ -378,7 +546,6 @@ export default function DiaryApp() {
                 </button>
               );
             })}
-            {/* Resources tab */}
             {(() => {
               const active = activeTab === 'resources';
               const rDone  = RESOURCES.filter(r => checks[r.id]).length;
@@ -402,7 +569,6 @@ export default function DiaryApp() {
             <div className="phase-view">
               <PhaseSummaryPanel phase={activePhase} checks={checks} theme={phaseTheme} />
 
-              {/* Controls */}
               <div className="phase-controls">
                 <div className="filter-group">
                   {(['all', 'todo', 'done'] as FilterType[]).map(f => (
@@ -423,7 +589,6 @@ export default function DiaryApp() {
                 </button>
               </div>
 
-              {/* Sections */}
               <div className="section-list">
                 {activePhase.sections.map((section, idx) => (
                   <SectionCard
