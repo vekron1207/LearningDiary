@@ -14,17 +14,18 @@ import {
   type User,
 } from '@/lib/firebase';
 
-const STORAGE_KEY = 'learning-diary-v2';
+const STORAGE_KEY   = 'learning-diary-v2';
+const THEME_KEY     = 'diary-theme';
 
-type FilterType  = 'all' | 'todo' | 'done';
-type SyncStatus  = 'idle' | 'syncing' | 'synced' | 'error';
+type FilterType = 'all' | 'todo' | 'done';
+type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error';
 
-/* Unique ID per browser tab — used to detect Firestore echo from our own saves */
+/* Unique ID per browser tab — detects Firestore echo from our own saves */
 const DEVICE_ID = typeof window !== 'undefined'
   ? (() => {
       const k = 'diary-device-id';
-      const existing = sessionStorage.getItem(k);
-      if (existing) return existing;
+      const e = sessionStorage.getItem(k);
+      if (e) return e;
       const id = Math.random().toString(36).slice(2);
       sessionStorage.setItem(k, id);
       return id;
@@ -32,12 +33,18 @@ const DEVICE_ID = typeof window !== 'undefined'
   : 'ssr';
 
 /* ── Phase theme tokens ── */
-const PHASE_THEME: Record<string, { color: string; light: string; border: string }> = {
-  proj: { color: '#1E3A8A', light: '#EFF6FF', border: '#1E3A8A33' },
-  p1:   { color: '#14532D', light: '#F0FDF4', border: '#14532D33' },
-  p2:   { color: '#1E40AF', light: '#EFF6FF', border: '#1E40AF33' },
-  p3:   { color: '#9A3412', light: '#FFF7ED', border: '#9A341233' },
-  p4:   { color: '#991B1B', light: '#FEF2F2', border: '#991B1B33' },
+/* On OLED black, phase colours become faint colour washes — just enough to signal the phase */
+const PHASE_THEME: Record<string, {
+  color: string; light: string; border: string;
+  darkBg: string; darkBorder: string;
+  /* Brighter variant for text/indicators on OLED black */
+  bright: string;
+}> = {
+  proj: { color: '#3B82F6', light: '#EFF6FF', border: '#3B82F633', darkBg: '#030912', darkBorder: '#3B82F622', bright: '#60A5FA' },
+  p1:   { color: '#22C55E', light: '#F0FDF4', border: '#22C55E33', darkBg: '#020C05', darkBorder: '#22C55E22', bright: '#4ADE80' },
+  p2:   { color: '#6366F1', light: '#EEF2FF', border: '#6366F133', darkBg: '#05040F', darkBorder: '#6366F122', bright: '#818CF8' },
+  p3:   { color: '#F97316', light: '#FFF7ED', border: '#F9731633', darkBg: '#0D0500', darkBorder: '#F9731622', bright: '#FB923C' },
+  p4:   { color: '#F43F5E', light: '#FFF1F2', border: '#F43F5E33', darkBg: '#0D0204', darkBorder: '#F43F5E22', bright: '#FB7185' },
 };
 
 function getWeekNumber(startDate: string): number {
@@ -74,6 +81,25 @@ function BulbIcon() {
   );
 }
 
+function MoonIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"
+        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function SunIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="5" stroke="currentColor" strokeWidth="2" />
+      <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"
+        stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function GoogleIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
@@ -81,6 +107,15 @@ function GoogleIcon() {
       <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
       <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
       <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+    </svg>
+  );
+}
+
+function SignOutIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"
+        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -193,30 +228,34 @@ function SectionCard({
 }
 
 /* ── Phase Summary Panel ── */
-function PhaseSummaryPanel({ phase, checks, theme }: {
+function PhaseSummaryPanel({ phase, checks, theme, isDark }: {
   phase: Phase; checks: Record<string, boolean>;
-  theme: { color: string; light: string; border: string };
+  theme: typeof PHASE_THEME[string]; isDark: boolean;
 }) {
-  const allItems = phase.sections.flatMap(s => s.items);
-  const done     = allItems.filter(i => checks[i.id]).length;
-  const total    = allItems.length;
-  const pct      = total ? Math.round((done / total) * 100) : 0;
+  const allItems  = phase.sections.flatMap(s => s.items);
+  const done      = allItems.filter(i => checks[i.id]).length;
+  const total     = allItems.length;
+  const pct       = total ? Math.round((done / total) * 100) : 0;
+  const accent    = isDark ? theme.bright : theme.color;
 
   return (
-    <div className="phase-summary" style={{ background: theme.light, borderColor: theme.border }}>
+    <div className="phase-summary" style={{
+      background:  isDark ? theme.darkBg    : theme.light,
+      borderColor: isDark ? theme.darkBorder : theme.border,
+    }}>
       <div className="phase-summary-header">
         <div>
           <div className="phase-summary-label">{phase.label} · {phase.weeks}</div>
           <div className="phase-summary-stat">
-            <span style={{ color: theme.color }}>{done}</span>
+            <span style={{ color: accent }}>{done}</span>
             <span className="phase-summary-of">/{total} complete</span>
           </div>
         </div>
-        <div className="phase-summary-pct" style={{ color: theme.color }}>{pct}%</div>
+        <div className="phase-summary-pct" style={{ color: accent }}>{pct}%</div>
       </div>
 
       <div className="phase-progress-bar">
-        <div className="phase-progress-fill" style={{ width: `${pct}%`, background: theme.color }} />
+        <div className="phase-progress-fill" style={{ width: `${pct}%`, background: accent }} />
       </div>
 
       <div className="phase-sections-grid">
@@ -228,7 +267,7 @@ function PhaseSummaryPanel({ phase, checks, theme }: {
             <div key={sec.id} className="phase-section-stat">
               <div className="phase-section-name">{sec.title}</div>
               <div className="phase-section-bar">
-                <div className="phase-section-fill" style={{ width: `${sPct}%`, background: theme.color }} />
+                <div className="phase-section-fill" style={{ width: `${sPct}%`, background: accent }} />
               </div>
               <div className="phase-section-count">{sDone}/{sTotal}</div>
             </div>
@@ -265,14 +304,15 @@ function ResourcesView({ checks, onToggle }: { checks: Record<string, boolean>; 
   );
 }
 
-/* ── Sync dot ── */
-function SyncDot({ status }: { status: SyncStatus }) {
-  return <span className={`sync-dot ${status}`} title={
-    status === 'synced'  ? 'Synced to cloud' :
-    status === 'syncing' ? 'Saving...' :
-    status === 'error'   ? 'Sync error — data saved locally' :
-    'Not synced yet'
-  } />;
+/* ── Sync status dot ── */
+function SyncDot({ status, dotOnly = false }: { status: SyncStatus; dotOnly?: boolean }) {
+  const label = status === 'synced' ? 'Synced' : status === 'syncing' ? 'Saving…' : status === 'error' ? 'Sync error' : '';
+  return (
+    <>
+      <span className={`sync-dot ${status}`} />
+      {!dotOnly && label && <span className="sync-label">{label}</span>}
+    </>
+  );
 }
 
 /* ════════════════════════════════════════════
@@ -285,21 +325,20 @@ export default function DiaryApp() {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [startDate,    setStartDate]    = useState<string>('');
   const [filter,       setFilter]       = useState<FilterType>('all');
+  const [isDark,       setIsDark]       = useState(false);
   const [isLoaded,     setIsLoaded]     = useState(false);
 
   /* Sync state */
-  const [user,       setUser]       = useState<User | null>(null);
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
+  const [user,         setUser]         = useState<User | null>(null);
+  const [syncStatus,   setSyncStatus]   = useState<SyncStatus>('idle');
+  const [showUserMenu, setShowUserMenu] = useState(false);
 
-  /* Refs — never trigger re-renders */
   const firestoreUnsubRef = useRef<(() => void) | null>(null);
   const saveTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /* Tracks the JSON snapshot of the last data received from Firestore.
-     Before saving, we compare current state to this — if they match, we skip
-     the save (it was a remote update, not a local change). */
-  const lastRemoteRef = useRef<string>('');
+  const lastRemoteRef     = useRef<string>('');
+  const menuRef           = useRef<HTMLDivElement>(null);
 
-  /* ── 1. Load from localStorage on mount (client only) ── */
+  /* ── 1. Load all state from localStorage on mount ── */
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -316,78 +355,65 @@ export default function DiaryApp() {
     } catch {
       setStartDate(new Date().toISOString());
     }
+    /* Load theme preference */
+    setIsDark(localStorage.getItem(THEME_KEY) === 'dark');
     setIsLoaded(true);
   }, []);
 
-  /* ── 2. Persist EVERYTHING to localStorage (all state, every change) ── */
+  /* ── 2. Persist everything to localStorage ── */
   useEffect(() => {
     if (!isLoaded) return;
     try {
-      const data: StoredState = { checks, completedAt, activeTab, openSections, startDate };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch { /* quota exceeded — silently ignore */ }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ checks, completedAt, activeTab, openSections, startDate }));
+    } catch { /* quota exceeded */ }
   }, [checks, completedAt, activeTab, openSections, startDate, isLoaded]);
 
-  /* ── 3. Firebase auth + Firestore real-time subscription ── */
+  /* ── 3. Persist theme preference ── */
+  useEffect(() => {
+    if (!isLoaded) return;
+    localStorage.setItem(THEME_KEY, isDark ? 'dark' : 'light');
+  }, [isDark, isLoaded]);
+
+  /* ── 4. Firebase auth + Firestore real-time subscription ── */
   useEffect(() => {
     if (!isFirebaseConfigured || !isLoaded) return;
 
     const unsubAuth = onAuthChange((newUser) => {
       setUser(newUser);
-
-      /* Clean up previous subscription whenever auth changes */
-      if (firestoreUnsubRef.current) {
-        firestoreUnsubRef.current();
-        firestoreUnsubRef.current = null;
-      }
-
+      if (firestoreUnsubRef.current) { firestoreUnsubRef.current(); firestoreUnsubRef.current = null; }
       if (!newUser) { setSyncStatus('idle'); return; }
 
       const docRef = getUserDocRef(newUser.uid);
       if (!docRef) return;
 
       setSyncStatus('syncing');
-
       const unsub = onSnapshot(docRef, (snap) => {
         if (!snap.exists()) { setSyncStatus('synced'); return; }
         const data = snap.data();
-
-        /* Skip our own saves echoing back (same tab/device) */
         if (data.deviceId === DEVICE_ID) { setSyncStatus('synced'); return; }
 
-        /* Capture remote snapshot BEFORE setState, so the Firestore save effect
-           sees this as "no local change needed" and skips re-saving. */
+        /* Record remote snapshot before setState so save effect skips re-saving */
         lastRemoteRef.current = JSON.stringify({
           checks:      data.checks      ?? {},
           completedAt: data.completedAt ?? {},
           startDate:   data.startDate   ?? '',
         });
-
-        /* Apply remote state — React 18 batches these */
         setChecks(data.checks           ?? {});
         setCompletedAt(data.completedAt ?? {});
         if (data.startDate) setStartDate(data.startDate);
         setSyncStatus('synced');
-      }, () => {
-        setSyncStatus('error');
-      });
+      }, () => setSyncStatus('error'));
 
       firestoreUnsubRef.current = unsub;
     });
 
-    return () => {
-      unsubAuth();
-      if (firestoreUnsubRef.current) firestoreUnsubRef.current();
-    };
+    return () => { unsubAuth(); if (firestoreUnsubRef.current) firestoreUnsubRef.current(); };
   }, [isLoaded]);
 
-  /* ── 4. Save checks/completedAt/startDate to Firestore (debounced 1s) ── */
+  /* ── 5. Save synced fields to Firestore (debounced 1 s) ── */
   useEffect(() => {
     if (!isLoaded || !user || !isFirebaseConfigured) return;
-
     const currentSnapshot = JSON.stringify({ checks, completedAt, startDate });
-
-    /* Skip if this state was just received from Firestore (not a local edit) */
     if (currentSnapshot === lastRemoteRef.current) return;
 
     setSyncStatus('syncing');
@@ -397,23 +423,28 @@ export default function DiaryApp() {
       const docRef = getUserDocRef(user.uid);
       if (!docRef) return;
       try {
-        await setDoc(docRef, {
-          checks,
-          completedAt,
-          startDate,
-          deviceId:  DEVICE_ID,
-          updatedAt: new Date().toISOString(),
-        });
-        /* Record what we just saved so future echoes are ignored */
+        await setDoc(docRef, { checks, completedAt, startDate, deviceId: DEVICE_ID, updatedAt: new Date().toISOString() });
         lastRemoteRef.current = currentSnapshot;
         setSyncStatus('synced');
-      } catch {
-        setSyncStatus('error');
-      }
+      } catch { setSyncStatus('error'); }
     }, 1000);
 
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [checks, completedAt, startDate, isLoaded, user]);
+
+  /* ── 6. Close user menu on outside click or Escape ── */
+  useEffect(() => {
+    if (!showUserMenu) return;
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setShowUserMenu(false);
+    }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setShowUserMenu(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKey);
+    return () => { document.removeEventListener('mousedown', handleClick); document.removeEventListener('keydown', handleKey); };
+  }, [showUserMenu]);
 
   /* ── Handlers ── */
   const toggleCheck = useCallback((id: string) => {
@@ -421,9 +452,7 @@ export default function DiaryApp() {
       const next = { ...prev, [id]: !prev[id] };
       setCompletedAt(ca => {
         if (next[id]) return { ...ca, [id]: new Date().toISOString() };
-        const updated = { ...ca };
-        delete updated[id];
-        return updated;
+        const u = { ...ca }; delete u[id]; return u;
       });
       return next;
     });
@@ -434,55 +463,35 @@ export default function DiaryApp() {
   }, []);
 
   const expandAll = useCallback((phase: Phase) => {
-    setOpenSections(prev => {
-      const next = { ...prev };
-      phase.sections.forEach(s => { next[s.id] = true; });
-      return next;
-    });
+    setOpenSections(prev => { const n = { ...prev }; phase.sections.forEach(s => { n[s.id] = true; }); return n; });
   }, []);
 
   const collapseAll = useCallback((phase: Phase) => {
-    setOpenSections(prev => {
-      const next = { ...prev };
-      phase.sections.forEach(s => { next[s.id] = false; });
-      return next;
-    });
+    setOpenSections(prev => { const n = { ...prev }; phase.sections.forEach(s => { n[s.id] = false; }); return n; });
   }, []);
 
-  const switchTab = useCallback((id: string) => {
-    setActiveTab(id);
-    setFilter('all');
-  }, []);
+  const switchTab = useCallback((id: string) => { setActiveTab(id); setFilter('all'); }, []);
 
-  const handleSignIn = useCallback(async () => {
-    try { await signInWithGoogle(); }
-    catch { /* user cancelled */ }
-  }, []);
+  const toggleTheme = useCallback(() => setIsDark(d => !d), []);
 
-  const handleSignOut = useCallback(async () => {
-    if (!window.confirm('Sign out? Your progress stays saved locally.')) return;
-    await signOutUser();
-    setSyncStatus('idle');
-  }, []);
+  const handleSignIn  = useCallback(async () => { try { await signInWithGoogle(); } catch { /* cancelled */ } }, []);
+  const handleSignOut = useCallback(async () => { await signOutUser(); setSyncStatus('idle'); }, []);
 
   /* ── Derived values ── */
   const allLearningItems = useMemo(() => PHASES.flatMap(p => p.sections.flatMap(s => s.items)), []);
-  const totalItems = allLearningItems.length + RESOURCES.length;
-  const totalDone  = allLearningItems.filter(i => checks[i.id]).length
-                   + RESOURCES.filter(r => checks[r.id]).length;
-  const overallPct = totalItems ? Math.round((totalDone / totalItems) * 100) : 0;
+  const totalItems  = allLearningItems.length + RESOURCES.length;
+  const totalDone   = allLearningItems.filter(i => checks[i.id]).length + RESOURCES.filter(r => checks[r.id]).length;
+  const overallPct  = totalItems ? Math.round((totalDone / totalItems) * 100) : 0;
   const currentWeek = getWeekNumber(startDate);
 
   const activePhase = PHASES.find(p => p.id === activeTab);
   const phaseTheme  = PHASE_THEME[activeTab] ?? PHASE_THEME['proj'];
   const anyOpen     = activePhase ? activePhase.sections.some(s => openSections[s.id]) : false;
 
-  if (!isLoaded) {
-    return <div className="diary-loading">Loading your diary…</div>;
-  }
+  if (!isLoaded) return <div className="diary-loading">Loading your diary…</div>;
 
   return (
-    <div className="diary">
+    <div className={`diary${isDark ? ' dark' : ''}`}>
       {/* ── Sticky Header ── */}
       <header className="diary-header">
         <div className="header-inner">
@@ -493,32 +502,67 @@ export default function DiaryApp() {
             </span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div className="header-right">
               <span className="overall-pct">{overallPct}%</span>
               <span className="overall-count">&nbsp;{totalDone}/{totalItems}</span>
             </div>
 
-            {/* Auth / Sync UI */}
-            {isFirebaseConfigured && (
-              <div className="sync-section">
-                {user ? (
-                  <button className="user-pill" onClick={handleSignOut} title="Click to sign out">
-                    <span className="avatar-circle">
-                      {(user.displayName ?? user.email ?? 'U')[0].toUpperCase()}
-                    </span>
-                    <SyncDot status={syncStatus} />
-                  </button>
-                ) : (
-                  <button className="sync-btn" onClick={handleSignIn}>
-                    <GoogleIcon />
-                    Sync
-                  </button>
+            {/* Dark mode toggle */}
+            <button className="theme-toggle" onClick={toggleTheme} title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>
+              {isDark ? <SunIcon /> : <MoonIcon />}
+            </button>
+
+            {/* Sign-in button (only when Firebase configured + not signed in) */}
+            {isFirebaseConfigured && !user && (
+              <button className="sync-btn" onClick={handleSignIn}>
+                <GoogleIcon />
+                Sync
+              </button>
+            )}
+
+            {/* Avatar trigger + dropdown (only when signed in) */}
+            {user && (
+              <div className="user-menu-wrap" ref={menuRef}>
+                <button
+                  className="avatar-trigger"
+                  onClick={() => setShowUserMenu(v => !v)}
+                  aria-label="Account menu"
+                  aria-expanded={showUserMenu}
+                >
+                  <div className="avatar-circle">
+                    {(user.displayName ?? user.email ?? 'U')[0].toUpperCase()}
+                  </div>
+                  <SyncDot status={syncStatus} dotOnly />
+                </button>
+
+                {showUserMenu && (
+                  <div className="user-dropdown" role="menu">
+                    <div className="dropdown-profile">
+                      <div className="avatar-circle-lg">
+                        {(user.displayName ?? user.email ?? 'U')[0].toUpperCase()}
+                      </div>
+                      <div>
+                        {user.displayName && <div className="dropdown-name">{user.displayName}</div>}
+                        <div className="dropdown-email">{user.email}</div>
+                      </div>
+                    </div>
+
+                    <div className="dropdown-status">
+                      <SyncDot status={syncStatus} />
+                    </div>
+
+                    <button className="dropdown-signout-btn" onClick={() => { handleSignOut(); setShowUserMenu(false); }}>
+                      <SignOutIcon />
+                      Sign out
+                    </button>
+                  </div>
                 )}
               </div>
             )}
           </div>
         </div>
+
         <div className="header-progress">
           <div className="header-progress-fill" style={{ width: `${overallPct}%` }} />
         </div>
@@ -530,16 +574,17 @@ export default function DiaryApp() {
           {/* ── Tab Bar ── */}
           <nav className="tab-bar">
             {PHASES.map(phase => {
-              const pItems = phase.sections.flatMap(s => s.items);
-              const pDone  = pItems.filter(i => checks[i.id]).length;
-              const active = activeTab === phase.id;
-              const theme  = PHASE_THEME[phase.id];
+              const pItems  = phase.sections.flatMap(s => s.items);
+              const pDone   = pItems.filter(i => checks[i.id]).length;
+              const active  = activeTab === phase.id;
+              const theme   = PHASE_THEME[phase.id];
+              const accent  = isDark ? theme.bright : theme.color;
               return (
                 <button
                   key={phase.id}
                   className={`tab-btn${active ? ' active' : ''}`}
                   onClick={() => switchTab(phase.id)}
-                  style={active ? { borderColor: theme.color, color: theme.color, background: theme.light } : {}}
+                  style={active ? { borderBottomColor: accent, color: accent } : {}}
                 >
                   <span className="tab-label">{phase.label}</span>
                   <span className="tab-progress">{pDone}/{pItems.length}</span>
@@ -553,7 +598,10 @@ export default function DiaryApp() {
                 <button
                   className={`tab-btn${active ? ' active' : ''}`}
                   onClick={() => switchTab('resources')}
-                  style={active ? { borderColor: '#6B6560', color: '#1A1714', background: '#EDEBE6' } : {}}
+                  style={active ? {
+                    borderBottomColor: '#6B6560',
+                    color: isDark ? '#C8C4BE' : '#1A1714',
+                  } : {}}
                 >
                   <span className="tab-label">Resources</span>
                   <span className="tab-progress">{rDone}/{RESOURCES.length}</span>
@@ -567,7 +615,7 @@ export default function DiaryApp() {
             <ResourcesView checks={checks} onToggle={toggleCheck} />
           ) : activePhase ? (
             <div className="phase-view">
-              <PhaseSummaryPanel phase={activePhase} checks={checks} theme={phaseTheme} />
+              <PhaseSummaryPanel phase={activePhase} checks={checks} theme={phaseTheme} isDark={isDark} />
 
               <div className="phase-controls">
                 <div className="filter-group">
@@ -600,7 +648,7 @@ export default function DiaryApp() {
                     checks={checks}
                     onItemToggle={toggleCheck}
                     filter={filter}
-                    phaseColor={phaseTheme.color}
+                    phaseColor={isDark ? phaseTheme.bright : phaseTheme.color}
                   />
                 ))}
               </div>
