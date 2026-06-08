@@ -4,6 +4,7 @@ export interface Item {
   url?: string;
   note?: string;
   tag?: 'easy' | 'medium' | 'hard';
+  details?: string;
 }
 
 export interface Section {
@@ -36,3 +37,27 @@ export interface StoredState {
   openSections: Record<string, boolean>;
   startDate: string;
 }
+
+export interface Track {
+  id: string;
+  label: string;
+  description: string;
+  icon: string;
+  color: string;
+  darkColor: string;
+  phases: Phase[];
+  resources: Resource[];
+}
+
+export interface FriendInfo {
+  uid: string;
+  displayName: string;
+  addedAt: string;
+}
+
+export interface FriendTrackSnap {
+  done: number;
+  /* total is computed from TRACKS at render time */
+}
+
+export type FriendProgress = Record<string, FriendTrackSnap>; /* trackId → snap */

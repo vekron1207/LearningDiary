@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { PHASES, RESOURCES } from '@/lib/data';
-import type { Item, Phase, Section, StoredState } from '@/lib/types';
+import type { Item, Phase, Section, StoredState, Track } from '@/lib/types';
 import {
   isFirebaseConfigured,
   signInWithGoogle,
@@ -14,8 +13,6 @@ import {
   type User,
 } from '@/lib/firebase';
 
-const STORAGE_KEY   = 'learning-diary-v2';
-const THEME_KEY     = 'diary-theme';
 
 type FilterType = 'all' | 'todo' | 'done';
 type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error';
@@ -46,6 +43,10 @@ const PHASE_THEME: Record<string, {
   p3:   { color: '#F97316', light: '#FFF7ED', border: '#F9731633', darkBg: '#0D0500', darkBorder: '#F9731622', bright: '#FB923C' },
   p4:   { color: '#F43F5E', light: '#FFF1F2', border: '#F43F5E33', darkBg: '#0D0204', darkBorder: '#F43F5E22', bright: '#FB7185' },
 };
+
+function getSyntheticTheme(color: string, darkColor: string) {
+  return { color, light: color + '15', border: color + '33', darkBg: '#050505', darkBorder: color + '22', bright: darkColor };
+}
 
 function getWeekNumber(startDate: string): number {
   if (!startDate) return 1;
@@ -140,6 +141,7 @@ function Checkbox({ checked, onChange }: { checked: boolean; onChange: () => voi
 
 /* ── Item Row ── */
 function ItemRow({ item, checked, onToggle }: { item: Item; checked: boolean; onToggle: () => void }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
   return (
     <div className={`item-row${checked ? ' completed' : ''}`}>
       <Checkbox checked={checked} onChange={onToggle} />
@@ -152,11 +154,26 @@ function ItemRow({ item, checked, onToggle }: { item: Item; checked: boolean; on
               <ExternalIcon />
             </a>
           )}
+          {item.details && (
+            <button
+              className="details-toggle"
+              onClick={() => setDetailsOpen(v => !v)}
+              aria-expanded={detailsOpen}
+              title={detailsOpen ? 'Hide details' : 'Show details'}
+            >
+              <ChevronIcon open={detailsOpen} />
+            </button>
+          )}
         </div>
         {item.note && (
           <div className="item-note">
             <BulbIcon />
             {item.note}
+          </div>
+        )}
+        {item.details && (
+          <div className={`item-details${detailsOpen ? ' open' : ''}`}>
+            <div className="item-details-inner">{item.details}</div>
           </div>
         )}
       </div>
@@ -279,16 +296,20 @@ function PhaseSummaryPanel({ phase, checks, theme, isDark }: {
 }
 
 /* ── Resources View ── */
-function ResourcesView({ checks, onToggle }: { checks: Record<string, boolean>; onToggle: (id: string) => void }) {
-  const done = RESOURCES.filter(r => checks[r.id]).length;
+function ResourcesView({ resources, checks, onToggle }: {
+  resources: import('@/lib/types').Resource[];
+  checks: Record<string, boolean>;
+  onToggle: (id: string) => void;
+}) {
+  const done = resources.filter(r => checks[r.id]).length;
   return (
     <div className="resources-view">
       <div className="resources-header">
         <h2 className="resources-title">Resources</h2>
-        <span className="resources-count">{done}/{RESOURCES.length} bookmarked</span>
+        <span className="resources-count">{done}/{resources.length} bookmarked</span>
       </div>
       <div className="resources-grid">
-        {RESOURCES.map(r => (
+        {resources.map(r => (
           <div key={r.id} className={`resource-card${checks[r.id] ? ' done' : ''}`}>
             <div className="resource-card-top">
               <Checkbox checked={!!checks[r.id]} onChange={() => onToggle(r.id)} />
@@ -318,20 +339,29 @@ function SyncDot({ status, dotOnly = false }: { status: SyncStatus; dotOnly?: bo
 /* ════════════════════════════════════════════
    MAIN COMPONENT
    ════════════════════════════════════════════ */
-export default function DiaryApp() {
+export default function DiaryApp({ track, onBack, isDark, onToggleDark }: {
+  track: Track;
+  onBack: () => void;
+  isDark: boolean;
+  onToggleDark: () => void;
+}) {
+  const STORAGE_KEY = `learning-diary-${track.id}-v1`;
+
   const [checks,       setChecks]       = useState<Record<string, boolean>>({});
   const [completedAt,  setCompletedAt]  = useState<Record<string, string>>({});
-  const [activeTab,    setActiveTab]    = useState<string>(PHASES[0].id);
+  const [activeTab,    setActiveTab]    = useState<string>(track.phases[0].id);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [startDate,    setStartDate]    = useState<string>('');
   const [filter,       setFilter]       = useState<FilterType>('all');
-  const [isDark,       setIsDark]       = useState(false);
   const [isLoaded,     setIsLoaded]     = useState(false);
 
   /* Sync state */
   const [user,         setUser]         = useState<User | null>(null);
   const [syncStatus,   setSyncStatus]   = useState<SyncStatus>('idle');
   const [showUserMenu, setShowUserMenu] = useState(false);
+  /* Gate saves until first Firestore snapshot is received — prevents a device
+     with no local progress from overwriting a higher-progress remote document */
+  const [syncReady,    setSyncReady]    = useState(false);
 
   const firestoreUnsubRef = useRef<(() => void) | null>(null);
   const saveTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -355,8 +385,6 @@ export default function DiaryApp() {
     } catch {
       setStartDate(new Date().toISOString());
     }
-    /* Load theme preference */
-    setIsDark(localStorage.getItem(THEME_KEY) === 'dark');
     setIsLoaded(true);
   }, []);
 
@@ -368,39 +396,54 @@ export default function DiaryApp() {
     } catch { /* quota exceeded */ }
   }, [checks, completedAt, activeTab, openSections, startDate, isLoaded]);
 
-  /* ── 3. Persist theme preference ── */
-  useEffect(() => {
-    if (!isLoaded) return;
-    localStorage.setItem(THEME_KEY, isDark ? 'dark' : 'light');
-  }, [isDark, isLoaded]);
-
-  /* ── 4. Firebase auth + Firestore real-time subscription ── */
+  /* ── 3. Firebase auth + Firestore real-time subscription ── */
   useEffect(() => {
     if (!isFirebaseConfigured || !isLoaded) return;
 
     const unsubAuth = onAuthChange((newUser) => {
       setUser(newUser);
       if (firestoreUnsubRef.current) { firestoreUnsubRef.current(); firestoreUnsubRef.current = null; }
-      if (!newUser) { setSyncStatus('idle'); return; }
+      if (!newUser) { setSyncStatus('idle'); setSyncReady(false); return; }
 
-      const docRef = getUserDocRef(newUser.uid);
+      setSyncReady(false); // wait for first snapshot before allowing saves
+      const docRef = getUserDocRef(newUser.uid, track.id);
       if (!docRef) return;
 
       setSyncStatus('syncing');
       const unsub = onSnapshot(docRef, (snap) => {
-        if (!snap.exists()) { setSyncStatus('synced'); return; }
+        if (!snap.exists()) {
+          /* No remote doc yet — safe to start saving local progress */
+          setSyncReady(true);
+          setSyncStatus('synced');
+          return;
+        }
         const data = snap.data();
         if (data.deviceId === DEVICE_ID) { setSyncStatus('synced'); return; }
 
-        /* Record remote snapshot before setState so save effect skips re-saving */
+        /* Merge strategy: an item is checked if it's checked on EITHER device.
+           Progress only moves forward — a device with less progress never
+           overwrites a device with more progress. */
+        setChecks(local => {
+          const remote = data.checks ?? {};
+          const merged: Record<string, boolean> = {};
+          for (const key of new Set([...Object.keys(remote), ...Object.keys(local)])) {
+            merged[key] = !!(remote[key] || local[key]);
+          }
+          return merged;
+        });
+        /* completedAt: keep local timestamp for conflicts (set on this device),
+           pull in any keys that only exist remotely */
+        setCompletedAt(local => ({ ...(data.completedAt ?? {}), ...local }));
+        if (data.startDate) setStartDate(data.startDate);
+
+        /* Set lastRemoteRef to the raw remote snapshot so the save effect will
+           push the merged result back if local had extra progress */
         lastRemoteRef.current = JSON.stringify({
           checks:      data.checks      ?? {},
           completedAt: data.completedAt ?? {},
           startDate:   data.startDate   ?? '',
         });
-        setChecks(data.checks           ?? {});
-        setCompletedAt(data.completedAt ?? {});
-        if (data.startDate) setStartDate(data.startDate);
+        setSyncReady(true);
         setSyncStatus('synced');
       }, () => setSyncStatus('error'));
 
@@ -412,7 +455,7 @@ export default function DiaryApp() {
 
   /* ── 5. Save synced fields to Firestore (debounced 1 s) ── */
   useEffect(() => {
-    if (!isLoaded || !user || !isFirebaseConfigured) return;
+    if (!isLoaded || !user || !isFirebaseConfigured || !syncReady) return;
     const currentSnapshot = JSON.stringify({ checks, completedAt, startDate });
     if (currentSnapshot === lastRemoteRef.current) return;
 
@@ -420,7 +463,7 @@ export default function DiaryApp() {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 
     saveTimerRef.current = setTimeout(async () => {
-      const docRef = getUserDocRef(user.uid);
+      const docRef = getUserDocRef(user.uid, track.id);
       if (!docRef) return;
       try {
         await setDoc(docRef, { checks, completedAt, startDate, deviceId: DEVICE_ID, updatedAt: new Date().toISOString() });
@@ -430,7 +473,7 @@ export default function DiaryApp() {
     }, 1000);
 
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [checks, completedAt, startDate, isLoaded, user]);
+  }, [checks, completedAt, startDate, isLoaded, user, syncReady]);
 
   /* ── 6. Close user menu on outside click or Escape ── */
   useEffect(() => {
@@ -472,20 +515,20 @@ export default function DiaryApp() {
 
   const switchTab = useCallback((id: string) => { setActiveTab(id); setFilter('all'); }, []);
 
-  const toggleTheme = useCallback(() => setIsDark(d => !d), []);
+  const toggleTheme = onToggleDark;
 
   const handleSignIn  = useCallback(async () => { try { await signInWithGoogle(); } catch { /* cancelled */ } }, []);
   const handleSignOut = useCallback(async () => { await signOutUser(); setSyncStatus('idle'); }, []);
 
   /* ── Derived values ── */
-  const allLearningItems = useMemo(() => PHASES.flatMap(p => p.sections.flatMap(s => s.items)), []);
-  const totalItems  = allLearningItems.length + RESOURCES.length;
-  const totalDone   = allLearningItems.filter(i => checks[i.id]).length + RESOURCES.filter(r => checks[r.id]).length;
+  const allLearningItems = useMemo(() => track.phases.flatMap(p => p.sections.flatMap(s => s.items)), [track]);
+  const totalItems  = allLearningItems.length + track.resources.length;
+  const totalDone   = allLearningItems.filter(i => checks[i.id]).length + track.resources.filter(r => checks[r.id]).length;
   const overallPct  = totalItems ? Math.round((totalDone / totalItems) * 100) : 0;
   const currentWeek = getWeekNumber(startDate);
 
-  const activePhase = PHASES.find(p => p.id === activeTab);
-  const phaseTheme  = PHASE_THEME[activeTab] ?? PHASE_THEME['proj'];
+  const activePhase = track.phases.find(p => p.id === activeTab);
+  const phaseTheme  = PHASE_THEME[activeTab] ?? getSyntheticTheme(track.color, track.darkColor);
   const anyOpen     = activePhase ? activePhase.sections.some(s => openSections[s.id]) : false;
 
   if (!isLoaded) return <div className="diary-loading">Loading your diary…</div>;
@@ -496,9 +539,12 @@ export default function DiaryApp() {
       <header className="diary-header">
         <div className="header-inner">
           <div className="header-left">
-            <span className="diary-title">Learning Diary</span>
+            <button className="back-btn" onClick={onBack} title="All tracks">← <span className="back-label">All Tracks</span></button>
+            <span className="diary-title">{track.label}</span>
             <span className="diary-subtitle">
-              Backend Eng · {currentWeek < 30 ? `Week ${currentWeek} of 30` : 'Week 30'}
+              {track.id === 'job-switch'
+                ? (currentWeek < 30 ? `Backend Eng · Week ${currentWeek} of 30` : 'Backend Eng · Week 30')
+                : `${totalDone}/${totalItems} · ${overallPct}%`}
             </span>
           </div>
 
@@ -573,12 +619,12 @@ export default function DiaryApp() {
 
           {/* ── Tab Bar ── */}
           <nav className="tab-bar">
-            {PHASES.map(phase => {
+            {track.phases.map(phase => {
               const pItems  = phase.sections.flatMap(s => s.items);
               const pDone   = pItems.filter(i => checks[i.id]).length;
               const active  = activeTab === phase.id;
-              const theme   = PHASE_THEME[phase.id];
-              const accent  = isDark ? theme.bright : theme.color;
+              const pTheme  = PHASE_THEME[phase.id] ?? getSyntheticTheme(track.color, track.darkColor);
+              const accent  = isDark ? pTheme.bright : pTheme.color;
               return (
                 <button
                   key={phase.id}
@@ -593,7 +639,7 @@ export default function DiaryApp() {
             })}
             {(() => {
               const active = activeTab === 'resources';
-              const rDone  = RESOURCES.filter(r => checks[r.id]).length;
+              const rDone  = track.resources.filter(r => checks[r.id]).length;
               return (
                 <button
                   className={`tab-btn${active ? ' active' : ''}`}
@@ -604,7 +650,7 @@ export default function DiaryApp() {
                   } : {}}
                 >
                   <span className="tab-label">Resources</span>
-                  <span className="tab-progress">{rDone}/{RESOURCES.length}</span>
+                  <span className="tab-progress">{rDone}/{track.resources.length}</span>
                 </button>
               );
             })()}
@@ -612,7 +658,7 @@ export default function DiaryApp() {
 
           {/* ── Content ── */}
           {activeTab === 'resources' ? (
-            <ResourcesView checks={checks} onToggle={toggleCheck} />
+            <ResourcesView resources={track.resources} checks={checks} onToggle={toggleCheck} />
           ) : activePhase ? (
             <div className="phase-view">
               <PhaseSummaryPanel phase={activePhase} checks={checks} theme={phaseTheme} isDark={isDark} />
