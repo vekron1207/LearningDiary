@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import HomeScreen from '@/components/HomeScreen';
 import DiaryApp from '@/components/DiaryApp';
 import ProfilePage from '@/components/ProfilePage';
+import { FriendsProgressProvider } from '@/components/FriendsProgressContext';
 import { getTrack } from '@/lib/tracks';
 
 const THEME_KEY = 'diary-theme';
@@ -49,8 +50,10 @@ function AppContent() {
 
 export default function Home() {
   return (
-    <Suspense fallback={null}>
-      <AppContent />
-    </Suspense>
+    <FriendsProgressProvider>
+      <Suspense fallback={null}>
+        <AppContent />
+      </Suspense>
+    </FriendsProgressProvider>
   );
 }

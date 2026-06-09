@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { TRACKS } from '@/lib/tracks';
-import type { FriendInfo, FriendProgress } from '@/lib/types';
 import {
   isFirebaseConfigured,
   signInWithGoogle,
@@ -13,27 +12,9 @@ import {
   resolveFriendCode,
   addFriend,
   onFriendsChange,
-  getFriendProgress,
   type User,
 } from '@/lib/firebase';
-
-function getTrackTotal(trackId: string): number {
-  const track = TRACKS.find(t => t.id === trackId);
-  if (!track) return 1;
-  return track.phases.flatMap(p => p.sections.flatMap(s => s.items)).length + track.resources.length;
-}
-
-function getMonogram(trackId: string): string {
-  if (trackId === 'javascript') return 'JS';
-  if (trackId === 'leetcode') return 'LC';
-  return 'JR';
-}
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch { return ''; }
-}
+import { useFriendsProgress, getFriendColor, type LeaderboardEntry } from './FriendsProgressContext';
 
 function GoogleIcon() {
   return (
@@ -74,40 +55,93 @@ function SunIcon() {
   );
 }
 
-function FriendCard({ friend, progress }: { friend: FriendInfo; progress: FriendProgress }) {
-  const initial = (friend.displayName || 'F')[0].toUpperCase();
+function getMonogram(trackId: string): string {
+  if (trackId === 'javascript') return 'JS';
+  if (trackId === 'leetcode') return 'LC';
+  return 'JR';
+}
+
+const RANK_MEDALS = ['🥇', '🥈', '🥉'];
+
+function LeaderboardSection() {
+  const { leaderboard, competitiveMessage, refreshMyProgress } = useFriendsProgress();
+
+  useEffect(() => {
+    refreshMyProgress();
+  }, [refreshMyProgress]);
+
+  if (leaderboard.length === 0) {
+    return (
+      <p className="profile-empty-hint">
+        Add friends to see the leaderboard. Share your code above to get started.
+      </p>
+    );
+  }
+
   return (
-    <div className="friend-card">
-      <div className="friend-card-header">
-        <div className="friend-avatar">{initial}</div>
-        <div className="friend-card-meta">
-          <span className="friend-name">{friend.displayName}</span>
-          {friend.addedAt && (
-            <span className="friend-since">added {formatDate(friend.addedAt)}</span>
-          )}
+    <div className="leaderboard-wrap">
+      {competitiveMessage && (
+        <div className={`competitive-msg ${leaderboard.find(e => e.isMe)?.rank === 1 ? 'leading' : 'chasing'}`}>
+          {competitiveMessage}
         </div>
+      )}
+
+      <div className="leaderboard-list">
+        {leaderboard.map(entry => (
+          <LeaderboardRow key={entry.uid} entry={entry} />
+        ))}
       </div>
-      <div className="friend-tracks">
-        {TRACKS.map(track => {
-          const snap = progress[track.id];
-          const done = snap?.done ?? 0;
-          const total = getTrackTotal(track.id);
-          const pct = total ? Math.round((done / total) * 100) : 0;
-          return (
-            <div key={track.id} className="friend-track-row">
-              <div className="friend-track-monogram" style={{ background: track.color }}>
-                {getMonogram(track.id)}
+    </div>
+  );
+}
+
+function LeaderboardRow({ entry }: { entry: LeaderboardEntry }) {
+  const medal = entry.rank <= 3 ? RANK_MEDALS[entry.rank - 1] : null;
+  const color = entry.isMe ? 'var(--accent)' : getFriendColor(entry.uid);
+
+  return (
+    <div className={`lb-entry${entry.isMe ? ' lb-me' : ''}`}>
+      <div className="lb-rank">
+        {medal ? (
+          <span className="lb-medal">{medal}</span>
+        ) : (
+          <span className="lb-rank-num">{entry.rank}</span>
+        )}
+      </div>
+
+      <div className="lb-avatar" style={{ background: color }}>
+        {entry.displayName[0].toUpperCase()}
+      </div>
+
+      <div className="lb-body">
+        <div className="lb-name-row">
+          <span className="lb-name">{entry.displayName}</span>
+          {entry.isMe && <span className="lb-you-tag">you</span>}
+          <span className="lb-score">{entry.totalDone} done</span>
+        </div>
+
+        <div className="lb-tracks">
+          {TRACKS.map(track => {
+            const snap = entry.byTrack[track.id];
+            const done  = snap?.done  ?? 0;
+            const total = snap?.total ?? 1;
+            const pct   = Math.round((done / total) * 100);
+            return (
+              <div key={track.id} className="lb-track-row">
+                <span className="lb-track-mono" style={{ background: track.color }}>
+                  {getMonogram(track.id)}
+                </span>
+                <div className="lb-track-bar-wrap">
+                  <div
+                    className="lb-track-bar-fill"
+                    style={{ width: `${pct}%`, background: track.color }}
+                  />
+                </div>
+                <span className="lb-track-pct">{pct}%</span>
               </div>
-              <div className="friend-track-bar-wrap">
-                <div
-                  className="friend-track-bar-fill"
-                  style={{ width: `${pct}%`, background: track.color }}
-                />
-              </div>
-              <span className="friend-track-pct">{pct}%</span>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -119,8 +153,7 @@ export default function ProfilePage({ onBack, isDark, onToggleDark }: {
   onToggleDark: () => void;
 }) {
   const [user, setUser] = useState<User | null>(null);
-  const [friends, setFriends] = useState<FriendInfo[]>([]);
-  const [friendProgress, setFriendProgress] = useState<Record<string, FriendProgress>>({});
+  const [friends, setFriends] = useState<{ uid: string }[]>([]);
   const [codeInput, setCodeInput] = useState('');
   const [addStatus, setAddStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [addMessage, setAddMessage] = useState('');
@@ -140,20 +173,6 @@ export default function ProfilePage({ onBack, isDark, onToggleDark }: {
     if (!user || !isFirebaseConfigured) return;
     return onFriendsChange(user.uid, setFriends);
   }, [user]);
-
-  const loadProgress = useCallback((friend: FriendInfo) => {
-    setFriendProgress(prev => {
-      if (prev[friend.uid]) return prev; // already loaded
-      getFriendProgress(friend.uid).then(p => {
-        setFriendProgress(curr => ({ ...curr, [friend.uid]: p }));
-      });
-      return prev;
-    });
-  }, []);
-
-  useEffect(() => {
-    friends.forEach(loadProgress);
-  }, [friends, loadProgress]);
 
   async function handleAddFriend() {
     if (!user || !codeInput.trim()) return;
@@ -287,26 +306,12 @@ export default function ProfilePage({ onBack, isDark, onToggleDark }: {
                 </div>
               </section>
 
-              {/* Friends list */}
+              {/* Leaderboard */}
               <section className="profile-section">
                 <h2 className="profile-section-title">
-                  Friends{friends.length > 0 ? ` · ${friends.length}` : ''}
+                  Leaderboard{friends.length > 0 ? ` · ${friends.length + 1} players` : ''}
                 </h2>
-                {friends.length === 0 ? (
-                  <p className="profile-empty-hint">
-                    No friends added yet. Share your code above to get started.
-                  </p>
-                ) : (
-                  <div className="friends-list">
-                    {friends.map(friend => (
-                      <FriendCard
-                        key={friend.uid}
-                        friend={friend}
-                        progress={friendProgress[friend.uid] ?? {}}
-                      />
-                    ))}
-                  </div>
-                )}
+                <LeaderboardSection />
               </section>
             </>
           )}

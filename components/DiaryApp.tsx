@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Item, Phase, Section, StoredState, Track } from '@/lib/types';
+import FriendDots from './FriendDots';
 import {
   isFirebaseConfigured,
   signInWithGoogle,
@@ -140,7 +141,7 @@ function Checkbox({ checked, onChange }: { checked: boolean; onChange: () => voi
 }
 
 /* ── Item Row ── */
-function ItemRow({ item, checked, onToggle }: { item: Item; checked: boolean; onToggle: () => void }) {
+function ItemRow({ item, checked, onToggle, trackId }: { item: Item; checked: boolean; onToggle: () => void; trackId: string }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   return (
     <div className={`item-row${checked ? ' completed' : ''}`}>
@@ -149,6 +150,7 @@ function ItemRow({ item, checked, onToggle }: { item: Item; checked: boolean; on
         <div className="item-top">
           {item.tag && <span className={`diff-badge diff-${item.tag}`}>{item.tag}</span>}
           <span className="item-text">{item.text}</span>
+          <FriendDots trackId={trackId} itemId={item.id} />
           {item.url && (
             <a href={item.url} target="_blank" rel="noopener noreferrer" className="item-link" title="Open reference">
               <ExternalIcon />
@@ -183,11 +185,11 @@ function ItemRow({ item, checked, onToggle }: { item: Item; checked: boolean; on
 
 /* ── Section Card ── */
 function SectionCard({
-  section, sectionIndex, isOpen, onToggle, checks, onItemToggle, filter, phaseColor,
+  section, sectionIndex, isOpen, onToggle, checks, onItemToggle, filter, phaseColor, trackId,
 }: {
   section: Section; sectionIndex: number; isOpen: boolean; onToggle: () => void;
   checks: Record<string, boolean>; onItemToggle: (id: string) => void;
-  filter: FilterType; phaseColor: string;
+  filter: FilterType; phaseColor: string; trackId: string;
 }) {
   const done    = section.items.filter(i => checks[i.id]).length;
   const total   = section.items.length;
@@ -235,6 +237,7 @@ function SectionCard({
                 item={item}
                 checked={!!checks[item.id]}
                 onToggle={() => onItemToggle(item.id)}
+                trackId={trackId}
               />
             ))}
           </div>
@@ -705,6 +708,7 @@ export default function DiaryApp({ track, onBack, onShowProfile, isDark, onToggl
                     onItemToggle={toggleCheck}
                     filter={filter}
                     phaseColor={isDark ? phaseTheme.bright : phaseTheme.color}
+                    trackId={track.id}
                   />
                 ))}
               </div>

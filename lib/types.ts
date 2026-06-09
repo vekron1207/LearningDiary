@@ -57,7 +57,7 @@ export interface FriendInfo {
 
 export interface FriendTrackSnap {
   done: number;
-  /* total is computed from TRACKS at render time */
+  checks: Record<string, boolean>;
 }
 
 export type FriendProgress = Record<string, FriendTrackSnap>; /* trackId → snap */

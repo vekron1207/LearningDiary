@@ -123,10 +123,36 @@ export async function getFriendProgress(
         const snap = await getDoc(doc(db!, 'users', friendUid, 'diary', trackId));
         if (snap.exists()) {
           const checks = (snap.data().checks ?? {}) as Record<string, boolean>;
-          result[trackId] = { done: Object.values(checks).filter(Boolean).length };
+          result[trackId] = { done: Object.values(checks).filter(Boolean).length, checks };
         }
       } catch { /* permission denied = friend hasn't shared yet */ }
     }),
   );
   return result;
+}
+
+/** Real-time listener on a friend's progress across all tracks. Returns unsubscribe fn. */
+export function onFriendProgressChange(
+  friendUid: string,
+  cb: (progress: Record<string, { done: number; checks: Record<string, boolean> }>) => void,
+): () => void {
+  if (!db) { cb({}); return () => {}; }
+  const TRACK_IDS = ['job-switch', 'leetcode', 'javascript'];
+  const snaps: Record<string, { done: number; checks: Record<string, boolean> }> = {};
+  const unsubs = TRACK_IDS.map(trackId =>
+    onSnapshot(
+      doc(db!, 'users', friendUid, 'diary', trackId),
+      snap => {
+        if (snap.exists()) {
+          const checks = (snap.data().checks ?? {}) as Record<string, boolean>;
+          snaps[trackId] = { done: Object.values(checks).filter(Boolean).length, checks };
+        } else {
+          delete snaps[trackId];
+        }
+        cb({ ...snaps });
+      },
+      () => { /* permission denied — friend hasn't shared */ },
+    )
+  );
+  return () => unsubs.forEach(u => u());
 }
