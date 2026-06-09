@@ -1,18 +1,17 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import HomeScreen from '@/components/HomeScreen';
 import DiaryApp from '@/components/DiaryApp';
 import ProfilePage from '@/components/ProfilePage';
 import { getTrack } from '@/lib/tracks';
-import type { Track } from '@/lib/types';
 
-const LAST_TRACK_KEY = 'diary-last-track';
 const THEME_KEY = 'diary-theme';
 
-export default function Home() {
-  const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
-  const [showProfile, setShowProfile] = useState(false);
+function AppContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
@@ -25,35 +24,33 @@ export default function Home() {
 
   const toggleDark = useCallback(() => setIsDark(d => !d), []);
 
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(LAST_TRACK_KEY);
-      if (saved) {
-        const track = getTrack(saved);
-        if (track) setSelectedTrack(track);
-      }
-    } catch { /* storage unavailable */ }
-  }, []);
+  const trackId = searchParams.get('track');
+  const view    = searchParams.get('view');
 
-  function handleSelectTrack(trackId: string) {
-    const track = getTrack(trackId);
-    if (!track) return;
-    try { localStorage.setItem(LAST_TRACK_KEY, trackId); } catch { /* quota */ }
-    setSelectedTrack(track);
+  const selectedTrack = trackId ? (getTrack(trackId) ?? null) : null;
+
+  if (view === 'profile') {
+    return <ProfilePage onBack={() => router.push('/')} isDark={isDark} onToggleDark={toggleDark} />;
   }
 
-  function handleBack() {
-    setSelectedTrack(null);
-    try { localStorage.removeItem(LAST_TRACK_KEY); } catch { /* quota */ }
+  if (selectedTrack) {
+    return <DiaryApp track={selectedTrack} onBack={() => router.push('/')} onShowProfile={() => router.push('?view=profile')} isDark={isDark} onToggleDark={toggleDark} />;
   }
 
-  if (showProfile) {
-    return <ProfilePage onBack={() => setShowProfile(false)} isDark={isDark} onToggleDark={toggleDark} />;
-  }
+  return (
+    <HomeScreen
+      onSelectTrack={(id) => router.push(`?track=${id}`)}
+      onShowProfile={() => router.push('?view=profile')}
+      isDark={isDark}
+      onToggleDark={toggleDark}
+    />
+  );
+}
 
-  if (!selectedTrack) {
-    return <HomeScreen onSelectTrack={handleSelectTrack} onShowProfile={() => setShowProfile(true)} isDark={isDark} onToggleDark={toggleDark} />;
-  }
-
-  return <DiaryApp track={selectedTrack} onBack={handleBack} isDark={isDark} onToggleDark={toggleDark} />;
+export default function Home() {
+  return (
+    <Suspense fallback={null}>
+      <AppContent />
+    </Suspense>
+  );
 }
