@@ -206,7 +206,7 @@ export default function ProfilePage({ onBack, isDark, onToggleDark }: {
             <button className="back-btn" onClick={onBack}>
               ← <span className="back-label">Home</span>
             </button>
-            <span className="diary-title">Friends &amp; Progress</span>
+            <span className="diary-title">Learning Diary</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <button className="theme-toggle" onClick={onToggleDark}>

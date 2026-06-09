@@ -6,7 +6,7 @@ import type { Track } from './types';
 export const TRACKS: Track[] = [
   {
     id: 'job-switch',
-    label: 'Job Switch Roadmap',
+    label: 'Java Roadmap',
     description: '30-week Java/Spring/LeetCode plan for switching to backend engineering. Structured phases from core Java to system design to job applications.',
     icon: '🚀',
     color: '#22C55E',
