@@ -168,7 +168,6 @@ export default function HomeScreen({
         <div className="header-inner">
           <div className="header-left">
             <span className="diary-title">Learning Diary</span>
-            <span className="diary-subtitle">Choose your path</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <button className="theme-toggle" onClick={onToggleDark} title={isDark ? 'Light mode' : 'Dark mode'}>

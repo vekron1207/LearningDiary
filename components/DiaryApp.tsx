@@ -525,7 +525,6 @@ export default function DiaryApp({ track, onBack, isDark, onToggleDark }: {
   const totalItems  = allLearningItems.length + track.resources.length;
   const totalDone   = allLearningItems.filter(i => checks[i.id]).length + track.resources.filter(r => checks[r.id]).length;
   const overallPct  = totalItems ? Math.round((totalDone / totalItems) * 100) : 0;
-  const currentWeek = getWeekNumber(startDate);
 
   const activePhase = track.phases.find(p => p.id === activeTab);
   const phaseTheme  = PHASE_THEME[activeTab] ?? getSyntheticTheme(track.color, track.darkColor);
@@ -540,12 +539,7 @@ export default function DiaryApp({ track, onBack, isDark, onToggleDark }: {
         <div className="header-inner">
           <div className="header-left">
             <button className="back-btn" onClick={onBack} title="All tracks">← <span className="back-label">All Tracks</span></button>
-            <span className="diary-title">{track.label}</span>
-            <span className="diary-subtitle">
-              {track.id === 'job-switch'
-                ? (currentWeek < 30 ? `Backend Eng · Week ${currentWeek} of 30` : 'Backend Eng · Week 30')
-                : `${totalDone}/${totalItems} · ${overallPct}%`}
-            </span>
+            <span className="diary-title">Learning Diary</span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>

@@ -24,7 +24,7 @@ const ibmMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: 'Learning Diary',
-  description: 'Personal learning tracker — Job Switch Roadmap, LeetCode Patterns, and JavaScript Mastery',
+  description: 'Personal learning tracker — Java Roadmap, LeetCode Patterns, and JavaScript Mastery',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
