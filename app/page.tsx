@@ -34,7 +34,7 @@ function AppContent() {
   }
 
   if (selectedTrack) {
-    return <DiaryApp track={selectedTrack} onBack={() => router.push('/')} isDark={isDark} onToggleDark={toggleDark} />;
+    return <DiaryApp track={selectedTrack} onBack={() => router.push('/')} onShowProfile={() => router.push('?view=profile')} isDark={isDark} onToggleDark={toggleDark} />;
   }
 
   return (

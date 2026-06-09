@@ -339,9 +339,20 @@ function SyncDot({ status, dotOnly = false }: { status: SyncStatus; dotOnly?: bo
 /* ════════════════════════════════════════════
    MAIN COMPONENT
    ════════════════════════════════════════════ */
-export default function DiaryApp({ track, onBack, isDark, onToggleDark }: {
+function FriendsIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+export default function DiaryApp({ track, onBack, onShowProfile, isDark, onToggleDark }: {
   track: Track;
   onBack: () => void;
+  onShowProfile: () => void;
   isDark: boolean;
   onToggleDark: () => void;
 }) {
@@ -591,6 +602,11 @@ export default function DiaryApp({ track, onBack, isDark, onToggleDark }: {
                     <div className="dropdown-status">
                       <SyncDot status={syncStatus} />
                     </div>
+
+                    <button className="dropdown-item-btn" onClick={() => { setShowUserMenu(false); onShowProfile(); }}>
+                      <FriendsIcon />
+                      Friends &amp; Progress
+                    </button>
 
                     <button className="dropdown-signout-btn" onClick={() => { handleSignOut(); setShowUserMenu(false); }}>
                       <SignOutIcon />
