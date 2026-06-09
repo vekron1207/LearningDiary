@@ -5,6 +5,8 @@ export interface Item {
   note?: string;
   tag?: 'easy' | 'medium' | 'hard';
   details?: string;
+  solution?: string;
+  solutions?: { python?: string; java?: string; javascript?: string };
 }
 
 export interface Section {

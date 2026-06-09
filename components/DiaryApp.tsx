@@ -83,6 +83,24 @@ function BulbIcon() {
   );
 }
 
+function LockIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+      <rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" strokeWidth="2"/>
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function UnlockIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+      <rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" strokeWidth="2"/>
+      <path d="M7 11V7a5 5 0 0 1 9.9-1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
 function MoonIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
@@ -140,9 +158,23 @@ function Checkbox({ checked, onChange }: { checked: boolean; onChange: () => voi
   );
 }
 
+const LANG_ORDER = ['python', 'java', 'javascript'] as const;
+type SolutionLang = typeof LANG_ORDER[number];
+const LANG_LABEL: Record<SolutionLang, string> = { python: 'Python', java: 'Java', javascript: 'JavaScript' };
+
 /* ── Item Row ── */
 function ItemRow({ item, checked, onToggle, trackId }: { item: Item; checked: boolean; onToggle: () => void; trackId: string }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [solutionOpen, setSolutionOpen] = useState(false);
+  const [solutionLang, setSolutionLang] = useState<SolutionLang>('python');
+
+  // Prefer multi-lang `solutions`, fall back to legacy `solution` (Python-only)
+  const s = item.solutions ?? (item.solution ? { python: item.solution } : undefined);
+  const availLangs = s ? LANG_ORDER.filter(l => !!s[l]) : [];
+  const hasSolution = availLangs.length > 0;
+  const activeLang: SolutionLang = availLangs.includes(solutionLang) ? solutionLang : (availLangs[0] ?? 'python');
+  const currentCode = s ? (s[activeLang] ?? '') : '';
+
   return (
     <div className={`item-row${checked ? ' completed' : ''}`}>
       <Checkbox checked={checked} onChange={onToggle} />
@@ -176,6 +208,43 @@ function ItemRow({ item, checked, onToggle, trackId }: { item: Item; checked: bo
         {item.details && (
           <div className={`item-details${detailsOpen ? ' open' : ''}`}>
             <div className="item-details-inner">{item.details}</div>
+          </div>
+        )}
+        {hasSolution && checked && (
+          <div className="solution-wrap">
+            <button
+              className={`reveal-btn${solutionOpen ? ' open' : ''}`}
+              onClick={() => setSolutionOpen(v => !v)}
+              aria-expanded={solutionOpen}
+            >
+              {solutionOpen ? <UnlockIcon /> : <LockIcon />}
+              {solutionOpen ? 'Hide solution' : 'Reveal solution'}
+            </button>
+            <div className={`item-solution${solutionOpen ? ' open' : ''}`}>
+              <div className="item-solution-inner">
+                {availLangs.length > 1 && (
+                  <div className="solution-lang-tabs">
+                    {availLangs.map(lang => (
+                      <button
+                        key={lang}
+                        className={`solution-lang-tab${activeLang === lang ? ' active' : ''}`}
+                        onClick={() => setSolutionLang(lang)}
+                      >
+                        {LANG_LABEL[lang]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="solution-code-wrap">
+                  {availLangs.length <= 1 && (
+                    <div className="solution-lang-bar">
+                      <span className="solution-lang">{LANG_LABEL[activeLang]}</span>
+                    </div>
+                  )}
+                  <pre className="solution-code">{currentCode}</pre>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
