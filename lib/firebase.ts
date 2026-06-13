@@ -12,6 +12,7 @@ import {
   doc,
   getDoc,
   setDoc,
+  deleteDoc,
   onSnapshot,
   collection,
   type DocumentReference,
@@ -84,6 +85,15 @@ export async function resolveFriendCode(code: string): Promise<{ uid: string; di
   const snap = await getDoc(doc(db, 'friendCodes', normalized));
   if (!snap.exists()) return null;
   return snap.data() as { uid: string; displayName: string };
+}
+
+/** Remove a friend from both users' friends subcollections (bidirectional). */
+export async function removeFriend(myUid: string, friendUid: string): Promise<void> {
+  if (!db) return;
+  await Promise.all([
+    deleteDoc(doc(db, 'users', myUid, 'friends', friendUid)),
+    deleteDoc(doc(db, 'users', friendUid, 'friends', myUid)).catch(() => {}),
+  ]);
 }
 
 /** Write a friend entry into both users' friends subcollections (bidirectional). */

@@ -2094,6 +2094,32 @@ body {
   flex-shrink: 0;
 }
 
+/* Remove friend button inside leaderboard rows */
+.lb-remove-btn {
+  flex-shrink: 0;
+  align-self: flex-start;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.lb-entry:hover .lb-remove-btn { opacity: 1; }
+.lb-remove-btn:hover { background: #FEE2E2; color: #DC2626; }
+.lb-remove-btn:disabled { opacity: 0.4; cursor: default; }
+.dark .lb-remove-btn:hover { background: #450A0A; color: #F87171; }
+@media (hover: none) { .lb-remove-btn { opacity: 0.5; } }
+
 /* ============================================================
    RESPONSIVE
    ============================================================ */

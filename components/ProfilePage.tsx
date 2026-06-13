@@ -11,6 +11,7 @@ import {
   registerUserProfile,
   resolveFriendCode,
   addFriend,
+  removeFriend,
   onFriendsChange,
   type User,
 } from '@/lib/firebase';
@@ -63,7 +64,13 @@ function getMonogram(trackId: string): string {
 
 const RANK_MEDALS = ['🥇', '🥈', '🥉'];
 
-function LeaderboardSection() {
+function LeaderboardSection({
+  onRemoveFriend,
+  removingUid,
+}: {
+  onRemoveFriend: (uid: string) => void;
+  removingUid: string | null;
+}) {
   const { leaderboard, competitiveMessage, refreshMyProgress } = useFriendsProgress();
 
   useEffect(() => {
@@ -88,14 +95,23 @@ function LeaderboardSection() {
 
       <div className="leaderboard-list">
         {leaderboard.map(entry => (
-          <LeaderboardRow key={entry.uid} entry={entry} />
+          <LeaderboardRow
+            key={entry.uid}
+            entry={entry}
+            onRemove={entry.isMe ? undefined : () => onRemoveFriend(entry.uid)}
+            removing={removingUid === entry.uid}
+          />
         ))}
       </div>
     </div>
   );
 }
 
-function LeaderboardRow({ entry }: { entry: LeaderboardEntry }) {
+function LeaderboardRow({ entry, onRemove, removing }: {
+  entry: LeaderboardEntry;
+  onRemove?: () => void;
+  removing?: boolean;
+}) {
   const medal = entry.rank <= 3 ? RANK_MEDALS[entry.rank - 1] : null;
   const color = entry.isMe ? 'var(--accent)' : getFriendColor(entry.uid);
 
@@ -143,6 +159,18 @@ function LeaderboardRow({ entry }: { entry: LeaderboardEntry }) {
           })}
         </div>
       </div>
+
+      {onRemove && (
+        <button
+          className="lb-remove-btn"
+          onClick={onRemove}
+          disabled={removing}
+          title="Remove friend"
+          aria-label={`Remove ${entry.displayName}`}
+        >
+          {removing ? '…' : '×'}
+        </button>
+      )}
     </div>
   );
 }
@@ -158,6 +186,7 @@ export default function ProfilePage({ onBack, isDark, onToggleDark }: {
   const [addStatus, setAddStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [addMessage, setAddMessage] = useState('');
   const [copied, setCopied] = useState(false);
+  const [removingUid, setRemovingUid] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isFirebaseConfigured) return;
@@ -203,6 +232,16 @@ export default function ProfilePage({ onBack, isDark, onToggleDark }: {
     } catch {
       setAddStatus('error');
       setAddMessage('Something went wrong. Please try again.');
+    }
+  }
+
+  async function handleRemoveFriend(uid: string) {
+    if (!user || removingUid) return;
+    setRemovingUid(uid);
+    try {
+      await removeFriend(user.uid, uid);
+    } catch { /* ignore */ } finally {
+      setRemovingUid(null);
     }
   }
 
@@ -311,7 +350,7 @@ export default function ProfilePage({ onBack, isDark, onToggleDark }: {
                 <h2 className="profile-section-title">
                   Leaderboard{friends.length > 0 ? ` · ${friends.length + 1} players` : ''}
                 </h2>
-                <LeaderboardSection />
+                <LeaderboardSection onRemoveFriend={handleRemoveFriend} removingUid={removingUid} />
               </section>
             </>
           )}

@@ -18,7 +18,8 @@ service cloud.firestore {
       allow read: if request.auth != null && request.auth.uid == userId;
       allow create, update: if request.auth != null &&
         (request.auth.uid == userId || request.auth.uid == friendId);
-      allow delete: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null &&
+        (request.auth.uid == userId || request.auth.uid == friendId);
     }
 
     // Friend code lookup table: any authenticated user can read (to resolve codes),

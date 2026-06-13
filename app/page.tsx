@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useTransition, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import HomeScreen from '@/components/HomeScreen';
 import DiaryApp from '@/components/DiaryApp';
@@ -13,6 +13,7 @@ const THEME_KEY = 'diary-theme';
 function AppContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [, startNav] = useTransition();
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
@@ -25,23 +26,30 @@ function AppContent() {
 
   const toggleDark = useCallback(() => setIsDark(d => !d), []);
 
+  /* Wrap every navigation in a transition so the current view stays
+     visible while the next view loads — prevents Suspense flashing null
+     and eating click events mid-transition. */
+  const nav = useCallback((url: string) => {
+    startNav(() => router.push(url));
+  }, [router]);
+
   const trackId = searchParams.get('track');
   const view    = searchParams.get('view');
 
   const selectedTrack = trackId ? (getTrack(trackId) ?? null) : null;
 
   if (view === 'profile') {
-    return <ProfilePage onBack={() => router.push('/')} isDark={isDark} onToggleDark={toggleDark} />;
+    return <ProfilePage onBack={() => nav('/')} isDark={isDark} onToggleDark={toggleDark} />;
   }
 
   if (selectedTrack) {
-    return <DiaryApp track={selectedTrack} onBack={() => router.push('/')} onShowProfile={() => router.push('?view=profile')} isDark={isDark} onToggleDark={toggleDark} />;
+    return <DiaryApp track={selectedTrack} onBack={() => nav('/')} onShowProfile={() => nav('?view=profile')} isDark={isDark} onToggleDark={toggleDark} />;
   }
 
   return (
     <HomeScreen
-      onSelectTrack={(id) => router.push(`?track=${id}`)}
-      onShowProfile={() => router.push('?view=profile')}
+      onSelectTrack={(id) => nav(`?track=${id}`)}
+      onShowProfile={() => nav('?view=profile')}
       isDark={isDark}
       onToggleDark={toggleDark}
     />
