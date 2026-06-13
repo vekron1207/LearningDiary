@@ -204,6 +204,13 @@ export function FriendsProgressProvider({ children }: { children: React.ReactNod
     return () => { Object.values(subs).forEach(u => u()); };
   }, []);
 
+  /* Auto-refresh when DiaryApp saves to localStorage */
+  useEffect(() => {
+    const handler = () => setTick(t => t + 1);
+    window.addEventListener('diary-progress-updated', handler);
+    return () => window.removeEventListener('diary-progress-updated', handler);
+  }, []);
+
   const refreshMyProgress = useCallback(() => setTick(t => t + 1), []);
 
   const leaderboard = useMemo(() => {

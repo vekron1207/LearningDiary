@@ -195,7 +195,7 @@ export default function ProfilePage({ onBack, isDark, onToggleDark }: {
         setAddMessage(`${result.displayName} is already in your friends list.`);
         return;
       }
-      await addFriend(user.uid, result.uid, result.displayName);
+      await addFriend(user.uid, user.displayName ?? user.email ?? 'User', result.uid, result.displayName);
       setAddStatus('success');
       setAddMessage(`Added ${result.displayName}!`);
       setCodeInput('');

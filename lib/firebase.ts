@@ -86,13 +86,24 @@ export async function resolveFriendCode(code: string): Promise<{ uid: string; di
   return snap.data() as { uid: string; displayName: string };
 }
 
-/** Write a friend entry into the caller's friends subcollection. */
-export async function addFriend(myUid: string, friendUid: string, friendDisplayName: string): Promise<void> {
+/** Write a friend entry into both users' friends subcollections (bidirectional). */
+export async function addFriend(
+  myUid: string,
+  myDisplayName: string,
+  friendUid: string,
+  friendDisplayName: string,
+): Promise<void> {
   if (!db) return;
-  await setDoc(doc(db, 'users', myUid, 'friends', friendUid), {
-    displayName: friendDisplayName,
-    addedAt: new Date().toISOString(),
-  });
+  await Promise.all([
+    setDoc(doc(db, 'users', myUid, 'friends', friendUid), {
+      displayName: friendDisplayName,
+      addedAt: new Date().toISOString(),
+    }),
+    setDoc(doc(db, 'users', friendUid, 'friends', myUid), {
+      displayName: myDisplayName,
+      addedAt: new Date().toISOString(),
+    }),
+  ]);
 }
 
 /** Real-time listener on the caller's friends list. Returns unsubscribe fn. */
@@ -151,7 +162,7 @@ export function onFriendProgressChange(
         }
         cb({ ...snaps });
       },
-      () => { /* permission denied — friend hasn't shared */ },
+      (err) => { console.warn(`[FriendsProgress] read denied for ${friendUid}/${trackId}:`, err.code); },
     )
   );
   return () => unsubs.forEach(u => u());

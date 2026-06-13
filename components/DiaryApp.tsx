@@ -11,6 +11,7 @@ import {
   getUserDocRef,
   setDoc,
   onSnapshot,
+  registerUserProfile,
   type User,
 } from '@/lib/firebase';
 
@@ -463,12 +464,13 @@ export default function DiaryApp({ track, onBack, onShowProfile, isDark, onToggl
     setIsLoaded(true);
   }, []);
 
-  /* ── 2. Persist everything to localStorage ── */
+  /* ── 2. Persist everything to localStorage + notify leaderboard context ── */
   useEffect(() => {
     if (!isLoaded) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ checks, completedAt, activeTab, openSections, startDate }));
     } catch { /* quota exceeded */ }
+    window.dispatchEvent(new CustomEvent('diary-progress-updated'));
   }, [checks, completedAt, activeTab, openSections, startDate, isLoaded]);
 
   /* ── 3. Firebase auth + Firestore real-time subscription ── */
@@ -480,6 +482,7 @@ export default function DiaryApp({ track, onBack, onShowProfile, isDark, onToggl
       if (firestoreUnsubRef.current) { firestoreUnsubRef.current(); firestoreUnsubRef.current = null; }
       if (!newUser) { setSyncStatus('idle'); setSyncReady(false); return; }
 
+      registerUserProfile(newUser.uid, newUser.displayName ?? newUser.email ?? 'User').catch(() => {});
       setSyncReady(false); // wait for first snapshot before allowing saves
       const docRef = getUserDocRef(newUser.uid, track.id);
       if (!docRef) return;
