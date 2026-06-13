@@ -220,31 +220,23 @@ function ItemRow({ item, checked, onToggle, trackId }: { item: Item; checked: bo
               {solutionOpen ? <UnlockIcon /> : <LockIcon />}
               {solutionOpen ? 'Hide solution' : 'Reveal solution'}
             </button>
-            <div className={`item-solution${solutionOpen ? ' open' : ''}`}>
-              <div className="item-solution-inner">
-                {availLangs.length > 1 && (
-                  <div className="solution-lang-tabs">
-                    {availLangs.map(lang => (
-                      <button
-                        key={lang}
-                        className={`solution-lang-tab${activeLang === lang ? ' active' : ''}`}
-                        onClick={() => setSolutionLang(lang)}
-                      >
-                        {LANG_LABEL[lang]}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <div className="solution-code-wrap">
-                  {availLangs.length <= 1 && (
-                    <div className="solution-lang-bar">
-                      <span className="solution-lang">{LANG_LABEL[activeLang]}</span>
-                    </div>
-                  )}
-                  <pre className="solution-code">{currentCode}</pre>
+            {solutionOpen && (
+              <div className="solution-code-wrap" data-lang={activeLang}>
+                <div className="solution-lang-tabs">
+                  {availLangs.map(lang => (
+                    <button
+                      key={lang}
+                      data-lang={lang}
+                      className={`solution-lang-tab${activeLang === lang ? ' active' : ''}`}
+                      onClick={() => setSolutionLang(lang)}
+                    >
+                      {LANG_LABEL[lang]}
+                    </button>
+                  ))}
                 </div>
+                <pre className="solution-code">{currentCode}</pre>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>

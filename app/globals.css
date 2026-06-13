@@ -503,12 +503,9 @@ body {
   gap: 14px;
   padding: 11px 0;
   border-bottom: 1px solid var(--border);
-  transition: opacity 0.2s ease;
 }
 
 .item-row:last-child { border-bottom: none; }
-
-.item-row.completed { opacity: 0.48; }
 
 .item-content { flex: 1; min-width: 0; }
 
@@ -1709,25 +1706,36 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: 8px;
+  margin-top: 10px;
 }
 
+/* ── Reveal / Hide button ── */
 .reveal-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 11px;
+  gap: 6px;
+  padding: 6px 16px;
   font-size: 11.5px;
   font-weight: 600;
   font-family: var(--font-body);
   color: var(--ink-3);
   background: transparent;
-  border: 1px solid var(--border-2);
-  border-radius: 6px;
+  border: 1.5px solid var(--border-2);
+  border-radius: 99px;
   cursor: pointer;
-  transition: all 0.14s ease;
+  transition: color 0.15s, background 0.15s, border-color 0.15s, box-shadow 0.2s, opacity 0.15s;
   align-self: flex-start;
   letter-spacing: 0.01em;
+}
+
+/* Hide the button (no layout space) when closed; show on hover/focus */
+.reveal-btn:not(.open) { display: none; }
+.item-row:hover .reveal-btn:not(.open),
+.item-row:focus-within .reveal-btn:not(.open) { display: inline-flex; }
+
+/* Hide entire solution-wrap (incl. margin) when solution is closed and row not hovered */
+.item-row:not(:hover):not(:focus-within) .solution-wrap:not(:has(.reveal-btn.open)) {
+  display: none;
 }
 
 .reveal-btn:hover {
@@ -1737,118 +1745,114 @@ body {
 }
 
 .reveal-btn.open {
-  color: #16A34A;
-  border-color: #16A34A55;
+  color: #15803D;
+  border-color: #22C55E;
   background: #F0FDF4;
+  box-shadow: 0 0 0 3px rgba(34,197,94,0.13), 0 2px 8px rgba(34,197,94,0.2);
 }
 
-.dark .reveal-btn {
-  border-color: #2A2520;
-}
-
-.dark .reveal-btn:hover {
-  background: #1A1714;
-}
-
+.dark .reveal-btn { border-color: #2A2A3A; color: #6B7280; }
+.dark .reveal-btn:hover { background: #1C1C28; color: #CDD6F4; border-color: #45475A; }
 .dark .reveal-btn.open {
   color: #4ADE80;
-  border-color: #16A34A44;
-  background: #020C05;
+  border-color: #22C55E;
+  background: rgba(34,197,94,0.08);
+  box-shadow: 0 0 0 3px rgba(34,197,94,0.15), 0 2px 12px rgba(34,197,94,0.25);
 }
 
-/* Solution accordion */
-.item-solution {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.25s ease;
+/* ── Solution reveal animation (no accordion wrapper — conditional render) ── */
+@keyframes solutionReveal {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-.item-solution.open {
-  grid-template-rows: 1fr;
-}
-
-.item-solution-inner { overflow: hidden; }
-
+/* ── Code container ── */
 .solution-code-wrap {
-  border: 1px solid #2A2A3A;
-  border-radius: 8px;
+  background: #12121E;
+  border-radius: 12px;
   overflow: hidden;
+  border: 1.5px solid #252540;
+  /* Strong shadow so the dark code island pops off the light page */
+  box-shadow: 0 10px 48px rgba(0,0,0,0.5), 0 2px 12px rgba(0,0,0,0.35);
   margin-top: 2px;
 }
 
-/* Language tabs (when multiple languages available) */
+/* Language-specific top accent bar: 4px stripe on the very top edge */
+.solution-code-wrap[data-lang="python"]     { border-top: 4px solid #4B8BBE; }
+.solution-code-wrap[data-lang="java"]       { border-top: 4px solid #F89820; }
+.solution-code-wrap[data-lang="javascript"] { border-top: 4px solid #F7DF1E; }
+
+.dark .solution-code-wrap {
+  box-shadow: 0 6px 32px rgba(0,0,0,0.8), 0 1px 6px rgba(0,0,0,0.6);
+}
+
+/* ── Language tab bar ── */
 .solution-lang-tabs {
   display: flex;
-  gap: 2px;
-  padding: 8px 12px 0;
-  background: #181825;
-  border-bottom: 1px solid #2A2A3A;
+  align-items: center;
+  background: #06060E;
+  border-bottom: 1px solid #1C1C30;
+  padding: 0 8px;
+  height: 42px;
+  gap: 4px;
 }
 
 .solution-lang-tab {
-  padding: 4px 12px 6px;
-  font-size: 11px;
-  font-family: var(--font-mono);
-  font-weight: 600;
-  border: 1px solid transparent;
-  border-bottom: none;
-  border-radius: 4px 4px 0 0;
-  cursor: pointer;
-  color: #6C7086;
-  background: transparent;
-  transition: color 0.15s, background 0.15s, border-color 0.15s;
-  position: relative;
-  bottom: -1px;
-}
-
-.solution-lang-tab:hover {
-  color: #A6ADC8;
-}
-
-.solution-lang-tab.active {
-  background: #1E1E2E;
-  color: #CDD6F4;
-  border-color: #45475A;
-  border-bottom-color: #1E1E2E;
-}
-
-.solution-lang-bar {
   display: flex;
   align-items: center;
-  padding: 5px 12px;
-  background: #181825;
-  border-bottom: 1px solid #2A2A3A;
-}
-
-.solution-lang {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #6C7086;
+  padding: 0 14px;
+  height: 30px;
+  font-size: 11.5px;
   font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #52527A;
+  background: transparent;
+  transition: color 0.15s, background 0.15s;
+  white-space: nowrap;
 }
 
+.solution-lang-tab:hover { color: #8888AA; background: rgba(255,255,255,0.06); }
+
+/* Active tabs: explicit language-specific filled pill */
+.solution-lang-tab[data-lang="python"].active {
+  color: #74B8E8;
+  background: rgba(75,139,190,0.22);
+  font-weight: 600;
+}
+.solution-lang-tab[data-lang="java"].active {
+  color: #FAB040;
+  background: rgba(248,152,32,0.22);
+  font-weight: 600;
+}
+.solution-lang-tab[data-lang="javascript"].active {
+  color: #F7E050;
+  background: rgba(247,223,30,0.22);
+  font-weight: 600;
+}
+
+/* ── Code block ── */
 .solution-code {
-  padding: 14px 16px;
+  display: block;
+  padding: 18px 20px;
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.75;
+  font-size: 12.5px;
+  line-height: 1.85;
   color: #CDD6F4;
   white-space: pre;
   overflow-x: auto;
-  background: #1E1E2E;
+  background: #12121E;
   scrollbar-width: thin;
-  scrollbar-color: #45475A #1E1E2E;
+  scrollbar-color: #45475A transparent;
 }
 
 .solution-code::-webkit-scrollbar { height: 5px; }
-.solution-code::-webkit-scrollbar-track { background: #1E1E2E; }
+.solution-code::-webkit-scrollbar-track { background: transparent; }
 .solution-code::-webkit-scrollbar-thumb { background: #45475A; border-radius: 3px; }
-
-/* Light mode override — still dark background for code */
-.solution-code-wrap { background: #1E1E2E; }
 
 /* ============================================================
    FRIEND DOTS — item-level completion indicators
