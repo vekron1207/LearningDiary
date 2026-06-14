@@ -2,6 +2,7 @@ import { PHASES as JOB_PHASES, RESOURCES as JOB_RESOURCES } from './data';
 import { LC_PHASES, LC_RESOURCES } from './data-leetcode';
 import { JS_PHASES, JS_RESOURCES } from './data-js';
 import { DE_PHASES, DE_RESOURCES } from './data-german';
+import { DE_QUIZZES } from './data-german-quiz';
 import type { Track } from './types';
 
 export const TRACKS: Track[] = [
@@ -44,6 +45,7 @@ export const TRACKS: Track[] = [
     darkColor: '#A78BFA',
     phases: DE_PHASES,
     resources: DE_RESOURCES,
+    quizzes: DE_QUIZZES,
   },
 ];
 

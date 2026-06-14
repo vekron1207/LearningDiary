@@ -40,6 +40,29 @@ export interface StoredState {
   startDate: string;
 }
 
+export interface QuizQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  correctIndex: number;
+  explanation?: string;
+  level?: string;
+}
+
+export interface Quiz {
+  id: string;
+  title: string;
+  level: string;
+  description: string;
+  questions: QuizQuestion[];
+}
+
+export interface QuizScore {
+  best: number;
+  total: number;
+  attempts: number;
+}
+
 export interface Track {
   id: string;
   label: string;
@@ -49,6 +72,7 @@ export interface Track {
   darkColor: string;
   phases: Phase[];
   resources: Resource[];
+  quizzes?: Quiz[];
 }
 
 export interface FriendInfo {

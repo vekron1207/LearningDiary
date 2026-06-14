@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Item, Phase, Section, StoredState, Track } from '@/lib/types';
 import FriendDots from './FriendDots';
+import QuizView from './QuizView';
 import {
   isFirebaseConfigured,
   signInWithGoogle,
@@ -731,10 +732,26 @@ export default function DiaryApp({ track, onBack, onShowProfile, isDark, onToggl
                 </button>
               );
             })()}
+            {track.quizzes?.length ? (() => {
+              const active = activeTab === 'quiz';
+              const accent = isDark ? track.darkColor : track.color;
+              return (
+                <button
+                  className={`tab-btn${active ? ' active' : ''}`}
+                  onClick={() => switchTab('quiz')}
+                  style={active ? { borderBottomColor: accent, color: accent } : {}}
+                >
+                  <span className="tab-label">Quiz</span>
+                  <span className="tab-progress">{track.quizzes!.length}</span>
+                </button>
+              );
+            })() : null}
           </nav>
 
           {/* ── Content ── */}
-          {activeTab === 'resources' ? (
+          {activeTab === 'quiz' && track.quizzes?.length ? (
+            <QuizView quizzes={track.quizzes} trackId={track.id} color={track.color} darkColor={track.darkColor} isDark={isDark} />
+          ) : activeTab === 'resources' ? (
             <ResourcesView resources={track.resources} checks={checks} onToggle={toggleCheck} />
           ) : activePhase ? (
             <div className="phase-view">
