@@ -1,17 +1,16 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import HomeScreen from '@/components/HomeScreen';
+import ProfilePage from '@/components/ProfilePage';
 import { useTheme } from '@/lib/useTheme';
 
-export default function Home() {
+export default function ProfileRoute() {
   const router = useRouter();
   const { isDark, toggleDark } = useTheme();
 
   return (
-    <HomeScreen
-      onSelectTrack={(id) => router.push(`/track/${id}`)}
-      onShowProfile={() => router.push('/profile')}
+    <ProfilePage
+      onBack={() => router.back()}
       isDark={isDark}
       onToggleDark={toggleDark}
     />

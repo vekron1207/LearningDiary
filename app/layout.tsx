@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Lora, DM_Sans, IBM_Plex_Mono } from 'next/font/google';
 import './globals.css';
+import { FriendsProgressProvider } from '@/components/FriendsProgressContext';
 
 const lora = Lora({
   subsets: ['latin'],
@@ -30,7 +31,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${lora.variable} ${dmSans.variable} ${ibmMono.variable}`}>
-      <body>{children}</body>
+      <body>
+        <FriendsProgressProvider>
+          {children}
+        </FriendsProgressProvider>
+      </body>
     </html>
   );
 }

@@ -1,4 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app';
+import { TRACKS } from './tracks';
 import {
   getAuth,
   GoogleAuthProvider,
@@ -136,10 +137,10 @@ export async function getFriendProgress(
   friendUid: string,
 ): Promise<import('./types').FriendProgress> {
   if (!db) return {};
-  const TRACK_IDS = ['job-switch', 'leetcode', 'javascript'];
+  const trackIds = TRACKS.map(t => t.id);
   const result: import('./types').FriendProgress = {};
   await Promise.all(
-    TRACK_IDS.map(async trackId => {
+    trackIds.map(async trackId => {
       try {
         const snap = await getDoc(doc(db!, 'users', friendUid, 'diary', trackId));
         if (snap.exists()) {
@@ -152,27 +153,39 @@ export async function getFriendProgress(
   return result;
 }
 
-/** Real-time listener on a friend's progress across all tracks. Returns unsubscribe fn. */
+/** Real-time listener on a friend's progress across all tracks. Returns unsubscribe fn.
+ *  Only fires callback after ALL track listeners have responded (avoids false "0%" flash). */
 export function onFriendProgressChange(
   friendUid: string,
   cb: (progress: Record<string, { done: number; checks: Record<string, boolean> }>) => void,
 ): () => void {
   if (!db) { cb({}); return () => {}; }
-  const TRACK_IDS = ['job-switch', 'leetcode', 'javascript'];
+  const trackIds = TRACKS.map(t => t.id);
   const snaps: Record<string, { done: number; checks: Record<string, boolean> }> = {};
-  const unsubs = TRACK_IDS.map(trackId =>
+  const firedTracks = new Set<string>();
+
+  const unsubs = trackIds.map(trackId =>
     onSnapshot(
       doc(db!, 'users', friendUid, 'diary', trackId),
       snap => {
+        firedTracks.add(trackId);
         if (snap.exists()) {
           const checks = (snap.data().checks ?? {}) as Record<string, boolean>;
           snaps[trackId] = { done: Object.values(checks).filter(Boolean).length, checks };
         } else {
           delete snaps[trackId];
         }
-        cb({ ...snaps });
+        if (firedTracks.size === trackIds.length) {
+          cb({ ...snaps });
+        }
       },
-      (err) => { console.warn(`[FriendsProgress] read denied for ${friendUid}/${trackId}:`, err.code); },
+      (err) => {
+        firedTracks.add(trackId);
+        console.warn(`[FriendsProgress] read denied for ${friendUid}/${trackId}:`, err.code);
+        if (firedTracks.size === trackIds.length) {
+          cb({ ...snaps });
+        }
+      },
     )
   );
   return () => unsubs.forEach(u => u());
