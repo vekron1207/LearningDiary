@@ -59,6 +59,7 @@ function SunIcon() {
 function getMonogram(trackId: string): string {
   if (trackId === 'javascript') return 'JS';
   if (trackId === 'leetcode') return 'LC';
+  if (trackId === 'german') return 'DE';
   return 'JR';
 }
 
