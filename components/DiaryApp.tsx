@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Item, Phase, Section, StoredState, Track } from '@/lib/types';
 import FriendDots from './FriendDots';
 import QuizView from './QuizView';
+import ItemContent from './ItemContent';
+import { parseLegacyDetails } from '@/lib/parseDetails';
 import {
   isFirebaseConfigured,
   signInWithGoogle,
@@ -49,12 +51,6 @@ const PHASE_THEME: Record<string, {
 
 function getSyntheticTheme(color: string, darkColor: string) {
   return { color, light: color + '15', border: color + '33', darkBg: '#050505', darkBorder: color + '22', bright: darkColor };
-}
-
-function getWeekNumber(startDate: string): number {
-  if (!startDate) return 1;
-  const diff = Date.now() - new Date(startDate).getTime();
-  return Math.min(Math.max(1, Math.floor(diff / (7 * 24 * 60 * 60 * 1000)) + 1), 30);
 }
 
 /* ── Icons ── */
@@ -170,6 +166,12 @@ function ItemRow({ item, checked, onToggle, trackId }: { item: Item; checked: bo
   const [solutionOpen, setSolutionOpen] = useState(false);
   const [solutionLang, setSolutionLang] = useState<SolutionLang>('python');
 
+  // Structured content: use rich `content` if present, else parse legacy `details`
+  const richBlocks = useMemo(
+    () => item.content ?? (item.details ? parseLegacyDetails(item.details) : null),
+    [item.content, item.details],
+  );
+
   // Prefer multi-lang `solutions`, fall back to legacy `solution` (Python-only)
   const s = item.solutions ?? (item.solution ? { python: item.solution } : undefined);
   const availLangs = s ? LANG_ORDER.filter(l => !!s[l]) : [];
@@ -190,16 +192,6 @@ function ItemRow({ item, checked, onToggle, trackId }: { item: Item; checked: bo
               <ExternalIcon />
             </a>
           )}
-          {item.details && (
-            <button
-              className="details-toggle"
-              onClick={() => setDetailsOpen(v => !v)}
-              aria-expanded={detailsOpen}
-              title={detailsOpen ? 'Hide details' : 'Show details'}
-            >
-              <ChevronIcon open={detailsOpen} />
-            </button>
-          )}
         </div>
         {item.note && (
           <div className="item-note">
@@ -207,10 +199,20 @@ function ItemRow({ item, checked, onToggle, trackId }: { item: Item; checked: bo
             {item.note}
           </div>
         )}
-        {item.details && (
-          <div className={`item-details${detailsOpen ? ' open' : ''}`}>
-            <div className="item-details-inner">{item.details}</div>
-          </div>
+        {richBlocks && (
+          <>
+            <button
+              className={`notes-toggle${detailsOpen ? ' open' : ''}`}
+              onClick={() => setDetailsOpen(v => !v)}
+              aria-expanded={detailsOpen}
+            >
+              <ChevronIcon open={detailsOpen} />
+              {detailsOpen ? 'Hide notes' : (item.content ? 'Study notes' : 'Details')}
+            </button>
+            <div className={`item-details${detailsOpen ? ' open' : ''}`}>
+              <div className="item-details-rich"><ItemContent content={richBlocks} /></div>
+            </div>
+          </>
         )}
         {hasSolution && checked && (
           <div className="solution-wrap">
@@ -609,7 +611,14 @@ export default function DiaryApp({ track, onBack, onShowProfile, isDark, onToggl
   const phaseTheme  = PHASE_THEME[activeTab] ?? getSyntheticTheme(track.color, track.darkColor);
   const anyOpen     = activePhase ? activePhase.sections.some(s => openSections[s.id]) : false;
 
-  if (!isLoaded) return <div className="diary-loading">Loading your diary…</div>;
+  if (!isLoaded) {
+    return (
+      <div className="diary-loading">
+        <div className="diary-loading-spinner" aria-hidden="true" />
+        Loading your diary…
+      </div>
+    );
+  }
 
   return (
     <div className={`diary${isDark ? ' dark' : ''}`}>

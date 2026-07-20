@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { TRACKS } from '@/lib/tracks';
+import { TRACKS, getTrackMonogram } from '@/lib/tracks';
 import type { Track } from '@/lib/types';
 import { isFirebaseConfigured, signInWithGoogle, signOutUser, onAuthChange, registerUserProfile, type User } from '@/lib/firebase';
 
@@ -90,7 +90,7 @@ function TrackCard({ track, onSelect }: { track: Track; onSelect: () => void }) 
       <div className="track-icon-area">
         <div className="track-icon-halo" />
         <div className="track-monogram" style={{ background: track.color }}>
-          {track.id === 'javascript' ? 'JS' : track.id === 'leetcode' ? 'LC' : 'JR'}
+          {getTrackMonogram(track.id)}
         </div>
       </div>
       <div className="track-card-body">
@@ -224,7 +224,8 @@ export default function HomeScreen({
               <span className="home-eyebrow-line" />
               <span className="home-eyebrow-text">Learning Diary</span>
             </div>
-            <h1 className="home-title">What are you<br />learning today?</h1>
+            <h1 className="home-title">What are you learning today?</h1>
+            <p className="home-lead">Pick a track to continue. Your progress saves automatically and syncs across devices when you sign in.</p>
           </div>
           <div className="track-grid">
             {TRACKS.map(track => (

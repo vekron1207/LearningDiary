@@ -52,3 +52,14 @@ export const TRACKS: Track[] = [
 export function getTrack(id: string): Track | undefined {
   return TRACKS.find(t => t.id === id);
 }
+
+const TRACK_MONOGRAMS: Record<string, string> = {
+  'job-switch': 'JR',
+  leetcode: 'LC',
+  javascript: 'JS',
+  german: 'DE',
+};
+
+export function getTrackMonogram(id: string): string {
+  return TRACK_MONOGRAMS[id] ?? id.slice(0, 2).toUpperCase();
+}

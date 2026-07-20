@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { TRACKS } from '@/lib/tracks';
+import { TRACKS, getTrackMonogram } from '@/lib/tracks';
 import {
   isFirebaseConfigured,
   signInWithGoogle,
@@ -54,13 +54,6 @@ function SunIcon() {
         stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
-}
-
-function getMonogram(trackId: string): string {
-  if (trackId === 'javascript') return 'JS';
-  if (trackId === 'leetcode') return 'LC';
-  if (trackId === 'german') return 'DE';
-  return 'JR';
 }
 
 const RANK_MEDALS = ['🥇', '🥈', '🥉'];
@@ -146,7 +139,7 @@ function LeaderboardRow({ entry, onRemove, removing }: {
             return (
               <div key={track.id} className="lb-track-row">
                 <span className="lb-track-mono" style={{ background: track.color }}>
-                  {getMonogram(track.id)}
+                  {getTrackMonogram(track.id)}
                 </span>
                 <div className="lb-track-bar-wrap">
                   <div

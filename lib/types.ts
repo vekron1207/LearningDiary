@@ -1,3 +1,14 @@
+/* ── Rich structured content (preferred over plain `details` string) ──
+   Inline formatting inside any `text`/cell: **bold** and `term` (backticks). */
+export type ContentBlock =
+  | { kind: 'heading'; text: string }
+  | { kind: 'para'; text: string }
+  | { kind: 'list'; ordered?: boolean; items: string[] }
+  | { kind: 'table'; caption?: string; headers: string[]; rows: string[][] }
+  | { kind: 'examples'; items: Array<{ de: string; en: string }> }
+  | { kind: 'callout'; tone?: 'tip' | 'warn'; text: string }
+  | { kind: 'code'; text: string };
+
 export interface Item {
   id: string;
   text: string;
@@ -5,6 +16,7 @@ export interface Item {
   note?: string;
   tag?: 'easy' | 'medium' | 'hard';
   details?: string;
+  content?: ContentBlock[];
   solution?: string;
   solutions?: { python?: string; java?: string; javascript?: string };
 }

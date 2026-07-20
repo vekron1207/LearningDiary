@@ -1,4 +1,5 @@
 import type { Phase, Resource } from './types';
+import { phase7Day } from './data-german-7day';
 
 /* ════════════════════════════════════════════════════════
    RESOURCES
@@ -533,4 +534,4 @@ const phaseB2: Phase = {
 /* ════════════════════════════════════════════════════════
    EXPORT
    ════════════════════════════════════════════════════════ */
-export const DE_PHASES: Phase[] = [phaseA1, phaseA2, phaseB1, phaseB2];
+export const DE_PHASES: Phase[] = [phase7Day, phaseA1, phaseA2, phaseB1, phaseB2];

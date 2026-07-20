@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Lora, DM_Sans, IBM_Plex_Mono } from 'next/font/google';
 import './globals.css';
 import { FriendsProgressProvider } from '@/components/FriendsProgressContext';
+import { ThemeProvider } from '@/components/ThemeProvider';
 
 const lora = Lora({
   subsets: ['latin'],
@@ -30,11 +31,21 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${lora.variable} ${dmSans.variable} ${ibmMono.variable}`}>
+    <html lang="en" className={`${lora.variable} ${dmSans.variable} ${ibmMono.variable}`} suppressHydrationWarning>
+      <head>
+        {/* Paint the correct background before hydration so dark users don't see a white flash */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(localStorage.getItem('diary-theme')==='dark'){document.documentElement.style.background='#000';document.documentElement.style.colorScheme='dark';}}catch(e){}`,
+          }}
+        />
+      </head>
       <body>
-        <FriendsProgressProvider>
-          {children}
-        </FriendsProgressProvider>
+        <ThemeProvider>
+          <FriendsProgressProvider>
+            {children}
+          </FriendsProgressProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

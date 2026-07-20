@@ -1,21 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-
-const THEME_KEY = 'diary-theme';
-
-export function useTheme() {
-  const [isDark, setIsDark] = useState(false);
-
-  useEffect(() => {
-    setIsDark(localStorage.getItem(THEME_KEY) === 'dark');
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem(THEME_KEY, isDark ? 'dark' : 'light');
-  }, [isDark]);
-
-  const toggleDark = useCallback(() => setIsDark(d => !d), []);
-
-  return { isDark, toggleDark };
-}
+/* Theme state is owned by ThemeProvider in the root layout so it persists
+   across client-side navigation. This re-export keeps existing imports
+   (`import { useTheme } from '@/lib/useTheme'`) working unchanged. */
+export { useTheme } from '@/components/ThemeProvider';
