@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import type { Item, Phase, Section, StoredState, Track } from '@/lib/types';
+import type { Item, Phase, Section, StoredState, Track, StudyModule } from '@/lib/types';
 import FriendDots from './FriendDots';
 import QuizView from './QuizView';
+import FlashcardsView from './FlashcardsView';
+import DrillsView from './DrillsView';
 import ItemContent from './ItemContent';
 import { parseLegacyDetails } from '@/lib/parseDetails';
 import {
@@ -404,6 +406,108 @@ function SyncDot({ status, dotOnly = false }: { status: SyncStatus; dotOnly?: bo
   );
 }
 
+/* ── Reusable phase view (summary + controls + section list) ── */
+type ThemeTokens = { color: string; light: string; border: string; darkBg: string; darkBorder: string; bright: string };
+
+interface PhaseViewProps {
+  phase: Phase;
+  theme: ThemeTokens;
+  isDark: boolean;
+  checks: Record<string, boolean>;
+  toggleCheck: (id: string) => void;
+  openSections: Record<string, boolean>;
+  toggleSection: (id: string) => void;
+  filter: FilterType;
+  setFilter: (f: FilterType) => void;
+  expandAll: (p: Phase) => void;
+  collapseAll: (p: Phase) => void;
+  trackId: string;
+}
+
+function PhaseView({ phase, theme, isDark, checks, toggleCheck, openSections, toggleSection, filter, setFilter, expandAll, collapseAll, trackId }: PhaseViewProps) {
+  const anyOpen = phase.sections.some(s => openSections[s.id]);
+  return (
+    <div className="phase-view">
+      <PhaseSummaryPanel phase={phase} checks={checks} theme={theme} isDark={isDark} />
+      <div className="phase-controls">
+        <div className="filter-group">
+          {(['all', 'todo', 'done'] as FilterType[]).map(f => (
+            <button key={f} className={`filter-btn${filter === f ? ' active' : ''}`} onClick={() => setFilter(f)}>
+              {f === 'all' ? 'All' : f === 'todo' ? 'To-do' : 'Done'}
+            </button>
+          ))}
+        </div>
+        <button className="expand-btn" onClick={() => anyOpen ? collapseAll(phase) : expandAll(phase)}>
+          {anyOpen ? 'Collapse all' : 'Expand all'}
+        </button>
+      </div>
+      <div className="section-list">
+        {phase.sections.map((section, idx) => (
+          <SectionCard
+            key={section.id}
+            section={section}
+            sectionIndex={idx + 1}
+            isOpen={!!openSections[section.id]}
+            onToggle={() => toggleSection(section.id)}
+            checks={checks}
+            onItemToggle={toggleCheck}
+            filter={filter}
+            phaseColor={isDark ? theme.bright : theme.color}
+            trackId={trackId}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Study-module package: Lessons / Flashcards / Drills in one tab ── */
+function KapitelModule({ module, color, darkColor, ...phaseProps }: { module: StudyModule; color: string; darkColor: string } & Omit<PhaseViewProps, 'phase'>) {
+  const { isDark } = phaseProps;
+  const accent = isDark ? darkColor : color;
+  const hasCards = !!module.flashcards?.length;
+  const hasDrills = !!module.drills?.length;
+  const hasQuiz = !!module.quizzes?.length;
+  type Mode = 'lessons' | 'flashcards' | 'drills' | 'quiz';
+  const [mode, setMode] = useState<Mode>('lessons');
+
+  const segs: { id: Mode; label: string }[] = [
+    { id: 'lessons', label: '📖 Lessons' },
+    ...(hasCards ? [{ id: 'flashcards' as Mode, label: '🎴 Flashcards' }] : []),
+    ...(hasDrills ? [{ id: 'drills' as Mode, label: '✏️ Drills' }] : []),
+    ...(hasQuiz ? [{ id: 'quiz' as Mode, label: '📝 Quiz' }] : []),
+  ];
+
+  return (
+    <div className="kapitel-module">
+      <div className="seg" role="tablist" aria-label="Study mode">
+        {segs.map(s => (
+          <button
+            key={s.id}
+            role="tab"
+            aria-selected={mode === s.id}
+            className={`seg-btn${mode === s.id ? ' active' : ''}`}
+            style={mode === s.id ? { background: accent } : undefined}
+            onClick={() => setMode(s.id)}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {mode === 'lessons' ? (
+        <PhaseView phase={module.phase} {...phaseProps} />
+      ) : mode === 'flashcards' && hasCards ? (
+        <FlashcardsView decks={module.flashcards!} trackId={phaseProps.trackId} color={color} darkColor={darkColor} isDark={isDark} />
+      ) : mode === 'drills' && hasDrills ? (
+        <DrillsView sets={module.drills!} trackId={phaseProps.trackId} color={color} darkColor={darkColor} isDark={isDark} />
+      ) : mode === 'quiz' && hasQuiz ? (
+        <QuizView quizzes={module.quizzes!} trackId={phaseProps.trackId} color={color} darkColor={darkColor} isDark={isDark} />
+      ) : null}
+    </div>
+  );
+}
+
 /* ════════════════════════════════════════════
    MAIN COMPONENT
    ════════════════════════════════════════════ */
@@ -428,7 +532,7 @@ export default function DiaryApp({ track, onBack, onShowProfile, isDark, onToggl
 
   const [checks,       setChecks]       = useState<Record<string, boolean>>({});
   const [completedAt,  setCompletedAt]  = useState<Record<string, string>>({});
-  const [activeTab,    setActiveTab]    = useState<string>(track.phases[0].id);
+  const [activeTab,    setActiveTab]    = useState<string>(track.studyModules?.[0]?.id ?? track.phases[0].id);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [startDate,    setStartDate]    = useState<string>('');
   const [filter,       setFilter]       = useState<FilterType>('all');
@@ -602,14 +706,31 @@ export default function DiaryApp({ track, onBack, onShowProfile, isDark, onToggl
   const handleSignOut = useCallback(async () => { await signOutUser(); setSyncStatus('idle'); }, []);
 
   /* ── Derived values ── */
-  const allLearningItems = useMemo(() => track.phases.flatMap(p => p.sections.flatMap(s => s.items)), [track]);
+  const studyModules = useMemo(() => track.studyModules ?? [], [track]);
+
+  const allLearningItems = useMemo(() => {
+    const phaseItems = track.phases.flatMap(p => p.sections.flatMap(s => s.items));
+    const modItems   = studyModules.flatMap(m => m.phase.sections.flatMap(s => s.items));
+    const seen = new Set<string>();
+    return [...phaseItems, ...modItems].filter(i => (seen.has(i.id) ? false : seen.add(i.id)));
+  }, [track, studyModules]);
   const totalItems  = allLearningItems.length + track.resources.length;
   const totalDone   = allLearningItems.filter(i => checks[i.id]).length + track.resources.filter(r => checks[r.id]).length;
   const overallPct  = totalItems ? Math.round((totalDone / totalItems) * 100) : 0;
 
-  const activePhase = track.phases.find(p => p.id === activeTab);
-  const phaseTheme  = PHASE_THEME[activeTab] ?? getSyntheticTheme(track.color, track.darkColor);
-  const anyOpen     = activePhase ? activePhase.sections.some(s => openSections[s.id]) : false;
+  /* Guard against a stored activeTab that no longer exists (removed content) */
+  const validTabIds = useMemo(() => new Set<string>([
+    ...studyModules.map(m => m.id),
+    ...track.phases.map(p => p.id),
+    ...(track.resources.length ? ['resources'] : []),
+    ...(track.quizzes?.length ? ['quiz'] : []),
+  ]), [track, studyModules]);
+  const defaultTab   = studyModules[0]?.id ?? track.phases[0]?.id ?? 'resources';
+  const effectiveTab = validTabIds.has(activeTab) ? activeTab : defaultTab;
+  const activeModule = studyModules.find(m => m.id === effectiveTab);
+
+  const activePhase = track.phases.find(p => p.id === effectiveTab);
+  const phaseTheme  = PHASE_THEME[effectiveTab] ?? getSyntheticTheme(track.color, track.darkColor);
 
   if (!isLoaded) {
     return (
@@ -706,10 +827,27 @@ export default function DiaryApp({ track, onBack, onShowProfile, isDark, onToggl
 
           {/* ── Tab Bar ── */}
           <nav className="tab-bar">
+            {studyModules.map(mod => {
+              const active = effectiveTab === mod.id;
+              const accent = isDark ? track.darkColor : track.color;
+              const items  = mod.phase.sections.flatMap(s => s.items);
+              const done   = items.filter(i => checks[i.id]).length;
+              return (
+                <button
+                  key={mod.id}
+                  className={`tab-btn${active ? ' active' : ''}`}
+                  onClick={() => switchTab(mod.id)}
+                  style={active ? { borderBottomColor: accent, color: accent } : {}}
+                >
+                  <span className="tab-label">{mod.label}</span>
+                  <span className="tab-progress">{done}/{items.length}</span>
+                </button>
+              );
+            })}
             {track.phases.map(phase => {
               const pItems  = phase.sections.flatMap(s => s.items);
               const pDone   = pItems.filter(i => checks[i.id]).length;
-              const active  = activeTab === phase.id;
+              const active  = effectiveTab === phase.id;
               const pTheme  = PHASE_THEME[phase.id] ?? getSyntheticTheme(track.color, track.darkColor);
               const accent  = isDark ? pTheme.bright : pTheme.color;
               return (
@@ -724,8 +862,8 @@ export default function DiaryApp({ track, onBack, onShowProfile, isDark, onToggl
                 </button>
               );
             })}
-            {(() => {
-              const active = activeTab === 'resources';
+            {track.resources.length ? (() => {
+              const active = effectiveTab === 'resources';
               const rDone  = track.resources.filter(r => checks[r.id]).length;
               return (
                 <button
@@ -740,9 +878,9 @@ export default function DiaryApp({ track, onBack, onShowProfile, isDark, onToggl
                   <span className="tab-progress">{rDone}/{track.resources.length}</span>
                 </button>
               );
-            })()}
+            })() : null}
             {track.quizzes?.length ? (() => {
-              const active = activeTab === 'quiz';
+              const active = effectiveTab === 'quiz';
               const accent = isDark ? track.darkColor : track.color;
               return (
                 <button
@@ -758,51 +896,43 @@ export default function DiaryApp({ track, onBack, onShowProfile, isDark, onToggl
           </nav>
 
           {/* ── Content ── */}
-          {activeTab === 'quiz' && track.quizzes?.length ? (
+          {activeModule ? (
+            <KapitelModule
+              key={activeModule.id}
+              module={activeModule}
+              color={track.color}
+              darkColor={track.darkColor}
+              theme={phaseTheme}
+              isDark={isDark}
+              checks={checks}
+              toggleCheck={toggleCheck}
+              openSections={openSections}
+              toggleSection={toggleSection}
+              filter={filter}
+              setFilter={setFilter}
+              expandAll={expandAll}
+              collapseAll={collapseAll}
+              trackId={track.id}
+            />
+          ) : effectiveTab === 'quiz' && track.quizzes?.length ? (
             <QuizView quizzes={track.quizzes} trackId={track.id} color={track.color} darkColor={track.darkColor} isDark={isDark} />
-          ) : activeTab === 'resources' ? (
+          ) : effectiveTab === 'resources' ? (
             <ResourcesView resources={track.resources} checks={checks} onToggle={toggleCheck} />
           ) : activePhase ? (
-            <div className="phase-view">
-              <PhaseSummaryPanel phase={activePhase} checks={checks} theme={phaseTheme} isDark={isDark} />
-
-              <div className="phase-controls">
-                <div className="filter-group">
-                  {(['all', 'todo', 'done'] as FilterType[]).map(f => (
-                    <button
-                      key={f}
-                      className={`filter-btn${filter === f ? ' active' : ''}`}
-                      onClick={() => setFilter(f)}
-                    >
-                      {f === 'all' ? 'All' : f === 'todo' ? 'To-do' : 'Done'}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  className="expand-btn"
-                  onClick={() => anyOpen ? collapseAll(activePhase) : expandAll(activePhase)}
-                >
-                  {anyOpen ? 'Collapse all' : 'Expand all'}
-                </button>
-              </div>
-
-              <div className="section-list">
-                {activePhase.sections.map((section, idx) => (
-                  <SectionCard
-                    key={section.id}
-                    section={section}
-                    sectionIndex={idx + 1}
-                    isOpen={!!openSections[section.id]}
-                    onToggle={() => toggleSection(section.id)}
-                    checks={checks}
-                    onItemToggle={toggleCheck}
-                    filter={filter}
-                    phaseColor={isDark ? phaseTheme.bright : phaseTheme.color}
-                    trackId={track.id}
-                  />
-                ))}
-              </div>
-            </div>
+            <PhaseView
+              phase={activePhase}
+              theme={phaseTheme}
+              isDark={isDark}
+              checks={checks}
+              toggleCheck={toggleCheck}
+              openSections={openSections}
+              toggleSection={toggleSection}
+              filter={filter}
+              setFilter={setFilter}
+              expandAll={expandAll}
+              collapseAll={collapseAll}
+              trackId={track.id}
+            />
           ) : null}
 
         </div>

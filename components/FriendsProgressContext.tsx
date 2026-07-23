@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { TRACKS } from '@/lib/tracks';
 import type { FriendInfo } from '@/lib/types';
+import { trackTotalCount } from '@/lib/types';
 import {
   isFirebaseConfigured,
   onAuthChange,
@@ -56,7 +57,7 @@ const TRACK_IDS = TRACKS.map(t => t.id);
 function getTrackTotal(trackId: string): number {
   const track = TRACKS.find(t => t.id === trackId);
   if (!track) return 1;
-  return track.phases.flatMap(p => p.sections.flatMap(s => s.items)).length + track.resources.length;
+  return trackTotalCount(track);
 }
 
 const TOTAL_ALL_ITEMS = TRACKS.reduce((sum, t) => sum + getTrackTotal(t.id), 0);

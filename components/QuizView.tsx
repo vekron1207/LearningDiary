@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import type { Quiz, QuizScore } from '@/lib/types';
+import type { Quiz, QuizQuestion, QuizScore } from '@/lib/types';
+import { shuffle, sample } from '@/lib/shuffle';
 
 function gradeFromPct(pct: number): { letter: string; color: string; darkColor: string } {
   if (pct === 100) return { letter: 'A+', color: '#16A34A', darkColor: '#4ADE80' };
@@ -13,6 +14,7 @@ function gradeFromPct(pct: number): { letter: string; color: string; darkColor: 
 }
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D'];
+const MIXED_DRAW = 12;
 
 const LEVEL_COLORS: Record<string, { bg: string; text: string; darkBg: string; darkText: string }> = {
   A1: { bg: '#DCFCE7', text: '#166534', darkBg: '#14532D', darkText: '#86EFAC' },
@@ -24,42 +26,60 @@ const LEVEL_COLORS: Record<string, { bg: string; text: string; darkBg: string; d
 function LevelBadge({ level, isDark }: { level: string; isDark: boolean }) {
   const c = LEVEL_COLORS[level] ?? { bg: '#F3F4F6', text: '#374151', darkBg: '#1F2937', darkText: '#D1D5DB' };
   return (
-    <span
-      className="quiz-level-badge"
-      style={{
-        background: isDark ? c.darkBg : c.bg,
-        color: isDark ? c.darkText : c.text,
-      }}
-    >
+    <span className="quiz-level-badge" style={{ background: isDark ? c.darkBg : c.bg, color: isDark ? c.darkText : c.text }}>
       {level}
     </span>
   );
 }
 
+/* A question prepared for a run: options shuffled so the correct answer
+   moves position each attempt (you can't memorise "it's B"). */
+interface PreparedQ {
+  id: string;
+  question: string;
+  options: string[];
+  correctIndex: number;
+  explanation?: string;
+  level?: string;
+}
+
+function prepare(q: QuizQuestion): PreparedQ {
+  // Shuffle by index so duplicate option strings can't mis-map the correct answer
+  const order = shuffle(q.options.map((_, i) => i));
+  return {
+    id: q.id,
+    question: q.question,
+    options: order.map(i => q.options[i]),
+    correctIndex: order.indexOf(q.correctIndex),
+    explanation: q.explanation,
+    level: q.level,
+  };
+}
+
+type RunDesc = { kind: 'quiz'; idx: number } | { kind: 'mixed' };
+
 export default function QuizView({
-  quizzes,
-  trackId,
-  color,
-  darkColor,
-  isDark,
+  quizzes, trackId, color, darkColor, isDark,
 }: {
-  quizzes: Quiz[];
-  trackId: string;
-  color: string;
-  darkColor: string;
-  isDark: boolean;
+  quizzes: Quiz[]; trackId: string; color: string; darkColor: string; isDark: boolean;
 }) {
   const SCORES_KEY = `learning-diary-quiz-${trackId}`;
   const accent = isDark ? darkColor : color;
+  const showMixed = quizzes.length >= 2;
+  const mixedId = `mixed-${quizzes.map(q => q.id).join('|')}`;
+  const mixedPoolSize = quizzes.reduce((n, q) => n + q.questions.length, 0);
+  const mixedCount = Math.min(MIXED_DRAW, mixedPoolSize);
 
   type Screen = 'select' | 'quiz' | 'result';
-  const [screen, setScreen]               = useState<Screen>('select');
-  const [activeQuizIdx, setActiveQuizIdx] = useState(0);
-  const [questionIdx, setQuestionIdx]     = useState(0);
-  const [answers, setAnswers]             = useState<(number | null)[]>([]);
-  const [selected, setSelected]           = useState<number | null>(null);
-  const [scores, setScores]               = useState<Record<string, QuizScore>>({});
-  const [newBest, setNewBest]             = useState(false);
+  const [screen, setScreen]       = useState<Screen>('select');
+  const [runDesc, setRunDesc]     = useState<RunDesc>({ kind: 'quiz', idx: 0 });
+  const [run, setRun]             = useState<PreparedQ[]>([]);
+  const [runMeta, setRunMeta]     = useState<{ id: string; title: string; level: string }>({ id: '', title: '', level: 'A1' });
+  const [questionIdx, setQuestionIdx] = useState(0);
+  const [answers, setAnswers]     = useState<(number | null)[]>([]);
+  const [selected, setSelected]   = useState<number | null>(null);
+  const [scores, setScores]       = useState<Record<string, QuizScore>>({});
+  const [newBest, setNewBest]     = useState(false);
 
   useEffect(() => {
     try {
@@ -68,16 +88,28 @@ export default function QuizView({
     } catch { /* storage unavailable */ }
   }, [SCORES_KEY]);
 
-  const activeQuiz = quizzes[activeQuizIdx];
-  const totalQ     = activeQuiz?.questions.length ?? 0;
-  const currentQ   = activeQuiz?.questions[questionIdx];
+  const totalQ      = run.length;
+  const currentQ    = run[questionIdx];
   const hasAnswered = selected !== null;
 
-  function startQuiz(idx: number) {
-    setActiveQuizIdx(idx);
+  function start(desc: RunDesc) {
+    let questions: PreparedQ[];
+    let meta: { id: string; title: string; level: string };
+    if (desc.kind === 'mixed') {
+      const pool = quizzes.flatMap(q => q.questions);
+      questions = sample(pool, mixedCount).map(prepare);
+      meta = { id: mixedId, title: 'Mixed Review', level: 'A1' };
+    } else {
+      const quiz = quizzes[desc.idx];
+      questions = shuffle(quiz.questions).map(prepare);
+      meta = { id: quiz.id, title: quiz.title, level: quiz.level };
+    }
+    setRunDesc(desc);
+    setRun(questions);
+    setRunMeta(meta);
     setQuestionIdx(0);
     setSelected(null);
-    setAnswers(new Array(quizzes[idx].questions.length).fill(null));
+    setAnswers(new Array(questions.length).fill(null));
     setNewBest(false);
     setScreen('quiz');
   }
@@ -85,11 +117,7 @@ export default function QuizView({
   function handleSelectOption(optIdx: number) {
     if (hasAnswered) return;
     setSelected(optIdx);
-    setAnswers(prev => {
-      const next = [...prev];
-      next[questionIdx] = optIdx;
-      return next;
-    });
+    setAnswers(prev => { const next = [...prev]; next[questionIdx] = optIdx; return next; });
   }
 
   function handleNext() {
@@ -104,10 +132,9 @@ export default function QuizView({
   function finishQuiz() {
     const finalAnswers = [...answers];
     finalAnswers[questionIdx] = selected;
+    const correct = finalAnswers.filter((a, i) => a === run[i].correctIndex).length;
 
-    const correct = finalAnswers.filter((a, i) => a === activeQuiz.questions[i].correctIndex).length;
-
-    const quizId = activeQuiz.id;
+    const quizId = runMeta.id;
     const prev   = scores[quizId];
     const isNewBest = !prev || correct > prev.best;
     const updated: QuizScore = {
@@ -129,39 +156,55 @@ export default function QuizView({
       <div className="quiz-view">
         <div className="quiz-select-header">
           <h2 className="quiz-select-title">Test Your Knowledge</h2>
-          <p className="quiz-select-sub">Choose a level to start a quiz. Your best scores are saved automatically.</p>
+          <p className="quiz-select-sub">Questions and answer options are shuffled every attempt, so you learn the German — not the position. Your best scores are saved.</p>
         </div>
 
         <div className="quiz-grid">
+          {showMixed && (() => {
+            const s = scores[mixedId];
+            const pct = s ? Math.round((s.best / s.total) * 100) : null;
+            const g = pct !== null ? gradeFromPct(pct) : null;
+            return (
+              <div className="quiz-card quiz-card--mixed" style={{ borderColor: accent }}>
+                <div className="quiz-card-top">
+                  <span className="quiz-mixed-badge" style={{ background: accent }}>🎲 Mixed</span>
+                  {g && <span className="quiz-card-grade" style={{ color: isDark ? g.darkColor : g.color }}>{g.letter}</span>}
+                </div>
+                <h3 className="quiz-card-title">Mixed Review</h3>
+                <p className="quiz-card-desc">A fresh random draw of {mixedCount} questions from all {quizzes.length} sets — different every time.</p>
+                {s ? (
+                  <div className="quiz-card-score">
+                    <div className="quiz-card-score-bar-wrap">
+                      <div className="quiz-card-score-bar" style={{ width: `${pct}%`, background: isDark ? g!.darkColor : g!.color }} />
+                    </div>
+                    <span className="quiz-card-score-text">Best: {s.best}/{s.total} · {pct}%{s.attempts > 1 && <span className="quiz-card-attempts"> ({s.attempts} attempts)</span>}</span>
+                  </div>
+                ) : (
+                  <p className="quiz-card-not-attempted">Not attempted yet</p>
+                )}
+                <button className="quiz-start-btn" style={{ background: accent }} onClick={() => start({ kind: 'mixed' })}>
+                  Start Mixed Review — {mixedCount} questions
+                </button>
+              </div>
+            );
+          })()}
+
           {quizzes.map((quiz, idx) => {
             const s   = scores[quiz.id];
             const pct = s ? Math.round((s.best / s.total) * 100) : null;
             const g   = pct !== null ? gradeFromPct(pct) : null;
-
             return (
               <div key={quiz.id} className="quiz-card">
                 <div className="quiz-card-top">
                   <LevelBadge level={quiz.level} isDark={isDark} />
-                  {g && (
-                    <span
-                      className="quiz-card-grade"
-                      style={{ color: isDark ? g.darkColor : g.color }}
-                    >
-                      {g.letter}
-                    </span>
-                  )}
+                  {g && <span className="quiz-card-grade" style={{ color: isDark ? g.darkColor : g.color }}>{g.letter}</span>}
                 </div>
-
                 <h3 className="quiz-card-title">{quiz.title}</h3>
                 <p className="quiz-card-desc">{quiz.description}</p>
-
                 {s ? (
                   <div className="quiz-card-score">
                     <div className="quiz-card-score-bar-wrap">
-                      <div
-                        className="quiz-card-score-bar"
-                        style={{ width: `${pct}%`, background: isDark ? g!.darkColor : g!.color }}
-                      />
+                      <div className="quiz-card-score-bar" style={{ width: `${pct}%`, background: isDark ? g!.darkColor : g!.color }} />
                     </div>
                     <span className="quiz-card-score-text">
                       Best: {s.best}/{s.total} · {pct}%
@@ -171,12 +214,7 @@ export default function QuizView({
                 ) : (
                   <p className="quiz-card-not-attempted">Not attempted yet</p>
                 )}
-
-                <button
-                  className="quiz-start-btn"
-                  style={{ background: accent }}
-                  onClick={() => startQuiz(idx)}
-                >
+                <button className="quiz-start-btn" style={{ background: accent }} onClick={() => start({ kind: 'quiz', idx })}>
                   {s ? 'Retake Quiz' : 'Start Quiz'} — {quiz.questions.length} questions
                 </button>
               </div>
@@ -195,29 +233,22 @@ export default function QuizView({
     return (
       <div className="quiz-view">
         <div className="quiz-in-progress">
-          {/* Header */}
           <div className="quiz-q-header">
             <div className="quiz-q-meta">
-              <LevelBadge level={currentQ.level ?? activeQuiz.level} isDark={isDark} />
+              <LevelBadge level={currentQ.level ?? runMeta.level} isDark={isDark} />
               <span className="quiz-q-counter">Question {questionIdx + 1} of {totalQ}</span>
             </div>
             <button className="quiz-exit-btn" onClick={() => setScreen('select')}>✕ Exit</button>
           </div>
 
-          {/* Progress bar */}
           <div className="quiz-progress-track">
-            <div
-              className="quiz-progress-fill"
-              style={{ width: `${progressPct}%`, background: accent }}
-            />
+            <div className="quiz-progress-fill" style={{ width: `${progressPct}%`, background: accent }} />
           </div>
 
-          {/* Question */}
           <div className="quiz-question-wrap">
             <p className="quiz-question-text">{currentQ.question}</p>
           </div>
 
-          {/* Options */}
           <div className="quiz-options">
             {currentQ.options.map((opt, i) => {
               let state: 'default' | 'correct' | 'wrong' | 'missed' = 'default';
@@ -225,7 +256,6 @@ export default function QuizView({
                 if (i === currentQ.correctIndex) state = 'correct';
                 else if (i === selected)          state = 'wrong';
               }
-
               return (
                 <button
                   key={i}
@@ -241,8 +271,7 @@ export default function QuizView({
                     style={
                       state === 'correct' ? { background: isDark ? '#16A34A' : '#22C55E', color: '#fff' } :
                       state === 'wrong'   ? { background: isDark ? '#DC2626' : '#EF4444', color: '#fff' } :
-                      hasAnswered         ? { opacity: 0.5 } :
-                      {}
+                      hasAnswered         ? { opacity: 0.5 } : {}
                     }
                   >
                     {OPTION_LABELS[i]}
@@ -255,7 +284,6 @@ export default function QuizView({
             })}
           </div>
 
-          {/* Explanation */}
           {hasAnswered && currentQ.explanation && (
             <div className={`quiz-explanation quiz-explanation--${isCorrect ? 'correct' : 'wrong'}`}
               style={{ borderColor: isCorrect ? (isDark ? '#4ADE80' : '#22C55E') : (isDark ? '#F87171' : '#EF4444') }}
@@ -265,14 +293,9 @@ export default function QuizView({
             </div>
           )}
 
-          {/* Next button */}
           {hasAnswered && (
             <div className="quiz-next-wrap">
-              <button
-                className="quiz-next-btn"
-                style={{ background: accent }}
-                onClick={handleNext}
-              >
+              <button className="quiz-next-btn" style={{ background: accent }} onClick={handleNext}>
                 {questionIdx < totalQ - 1 ? 'Next Question →' : 'See Results →'}
               </button>
             </div>
@@ -284,7 +307,7 @@ export default function QuizView({
 
   /* ── RESULT SCREEN ── */
   if (screen === 'result') {
-    const correct = answers.filter((a, i) => a === activeQuiz.questions[i].correctIndex).length;
+    const correct = answers.filter((a, i) => a === run[i].correctIndex).length;
     const pct     = Math.round((correct / totalQ) * 100);
     const grade   = gradeFromPct(pct);
     const gradeColor = isDark ? grade.darkColor : grade.color;
@@ -292,11 +315,7 @@ export default function QuizView({
     return (
       <div className="quiz-view">
         <div className="quiz-result">
-          {newBest && (
-            <div className="quiz-new-best" style={{ color: accent }}>
-              🎉 New best score!
-            </div>
-          )}
+          {newBest && <div className="quiz-new-best" style={{ color: accent }}>🎉 New best score!</div>}
 
           <div className="quiz-result-score-wrap">
             <div className="quiz-result-score" style={{ color: gradeColor }}>
@@ -305,19 +324,15 @@ export default function QuizView({
             <div className="quiz-result-grade" style={{ color: gradeColor }}>{grade.letter}</div>
           </div>
 
-          <p className="quiz-result-pct">{pct}% correct — {activeQuiz.title}</p>
+          <p className="quiz-result-pct">{pct}% correct — {runMeta.title}</p>
 
-          {/* Per-question breakdown */}
           <div className="quiz-breakdown">
-            {activeQuiz.questions.map((q, i) => {
+            {run.map((q, i) => {
               const isOk  = answers[i] === q.correctIndex;
               const chosen = answers[i];
               return (
-                <div key={q.id} className={`quiz-breakdown-row quiz-breakdown-row--${isOk ? 'ok' : 'fail'}`}>
-                  <span
-                    className="quiz-breakdown-icon"
-                    style={{ color: isOk ? (isDark ? '#4ADE80' : '#16A34A') : (isDark ? '#F87171' : '#DC2626') }}
-                  >
+                <div key={`${q.id}-${i}`} className={`quiz-breakdown-row quiz-breakdown-row--${isOk ? 'ok' : 'fail'}`}>
+                  <span className="quiz-breakdown-icon" style={{ color: isOk ? (isDark ? '#4ADE80' : '#16A34A') : (isDark ? '#F87171' : '#DC2626') }}>
                     {isOk ? '✓' : '✗'}
                   </span>
                   <div className="quiz-breakdown-body">
@@ -336,19 +351,11 @@ export default function QuizView({
             })}
           </div>
 
-          {/* Actions */}
           <div className="quiz-result-actions">
-            <button
-              className="quiz-start-btn"
-              style={{ background: accent }}
-              onClick={() => startQuiz(activeQuizIdx)}
-            >
+            <button className="quiz-start-btn" style={{ background: accent }} onClick={() => start(runDesc)}>
               Try Again
             </button>
-            <button
-              className="quiz-back-btn"
-              onClick={() => setScreen('select')}
-            >
+            <button className="quiz-back-btn" onClick={() => setScreen('select')}>
               ← All Quizzes
             </button>
           </div>

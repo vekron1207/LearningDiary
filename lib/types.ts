@@ -75,6 +75,63 @@ export interface QuizScore {
   attempts: number;
 }
 
+/* ── Flashcards (active recall + spaced repetition) ── */
+export interface Flashcard {
+  id: string;
+  de: string;              // front — German word/phrase
+  en: string;              // back — English meaning
+  gender?: 'der' | 'die' | 'das';
+  plural?: string;         // plural form, e.g. "die Väter"
+  example?: string;        // German example sentence
+  exampleEn?: string;      // its translation
+  emoji?: string;
+}
+
+export interface FlashcardDeck {
+  id: string;
+  title: string;
+  chapter: string;         // e.g. "Kapitel 5"
+  description?: string;
+  cards: Flashcard[];
+}
+
+/* ── Interactive drills ── */
+export type DrillKind = 'blank' | 'order';
+
+export interface Drill {
+  id: string;
+  kind: DrillKind;
+  prompt: string;          // sentence with ___ (blank) or an instruction/English gloss (order)
+  gloss?: string;          // supporting translation shown under the prompt
+  /* blank */
+  answer?: string;         // correct fill
+  options?: string[];      // multiple choice; omit for free typing
+  /* order */
+  tokens?: string[];       // scrambled word bank
+  solution?: string[];     // correct ordered tokens
+  explanation?: string;
+}
+
+export interface DrillSet {
+  id: string;
+  title: string;
+  chapter: string;
+  description?: string;
+  drills: Drill[];
+}
+
+/* A self-contained study package: lessons + flashcards + drills for the
+   same goal, surfaced as one tab with an internal Lessons/Flashcards/Drills
+   switch. */
+export interface StudyModule {
+  id: string;              // tab id
+  label: string;           // tab label, e.g. "Kapitel 5–7"
+  phase: Phase;            // the lessons (rendered like any phase)
+  flashcards?: FlashcardDeck[];
+  drills?: DrillSet[];
+  quizzes?: Quiz[];
+}
+
 export interface Track {
   id: string;
   label: string;
@@ -85,6 +142,20 @@ export interface Track {
   phases: Phase[];
   resources: Resource[];
   quizzes?: Quiz[];
+  studyModules?: StudyModule[];
+}
+
+/* All checkable learning items for a track — phases plus every study module.
+   Deduplicated by id, since shared content (e.g. Kapitel 5–7 appearing both
+   standalone and inside Test 1) must be counted once. */
+export function trackLearningItemIds(track: Track): string[] {
+  const phaseItems = track.phases.flatMap(p => p.sections.flatMap(s => s.items.map(i => i.id)));
+  const modItems   = (track.studyModules ?? []).flatMap(m => m.phase.sections.flatMap(s => s.items.map(i => i.id)));
+  return [...new Set([...phaseItems, ...modItems])];
+}
+
+export function trackTotalCount(track: Track): number {
+  return trackLearningItemIds(track).length + track.resources.length;
 }
 
 export interface FriendInfo {

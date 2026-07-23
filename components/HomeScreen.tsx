@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { TRACKS, getTrackMonogram } from '@/lib/tracks';
 import type { Track } from '@/lib/types';
+import { trackLearningItemIds } from '@/lib/types';
 import { isFirebaseConfigured, signInWithGoogle, signOutUser, onAuthChange, registerUserProfile, type User } from '@/lib/firebase';
 
 function getTrackProgress(track: Track): { done: number; total: number } {
@@ -11,9 +12,10 @@ function getTrackProgress(track: Track): { done: number; total: number } {
     if (!raw) return { done: 0, total: 0 };
     const data = JSON.parse(raw) as { checks?: Record<string, boolean> };
     const checks = data.checks ?? {};
-    const total = track.phases.flatMap(p => p.sections.flatMap(s => s.items)).length + track.resources.length;
-    const done = Object.values(checks).filter(Boolean).length;
-    return { done, total };
+    // Count only items that still exist (ignores stale checks from removed content)
+    const ids = [...trackLearningItemIds(track), ...track.resources.map(r => r.id)];
+    const done = ids.filter(id => checks[id]).length;
+    return { done, total: ids.length };
   } catch {
     return { done: 0, total: 0 };
   }

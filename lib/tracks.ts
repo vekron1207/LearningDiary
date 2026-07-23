@@ -1,9 +1,23 @@
 import { PHASES as JOB_PHASES, RESOURCES as JOB_RESOURCES } from './data';
 import { LC_PHASES, LC_RESOURCES } from './data-leetcode';
 import { JS_PHASES, JS_RESOURCES } from './data-js';
-import { DE_PHASES, DE_RESOURCES } from './data-german';
-import { DE_QUIZZES } from './data-german-quiz';
-import type { Track } from './types';
+import { phaseKapitel57, DE_FLASHCARDS, DE_DRILLS, DE_KAPITEL_QUIZZES } from './data-german-kapitel';
+import { GERMAN_CHAPTERS_BEFORE, GERMAN_CHAPTERS_AFTER } from './data-german-course';
+import type { Track, StudyModule } from './types';
+
+/* Kapitel 5–7 also appear as standalone chapters, reusing the exact same
+   content as the "Test 1" package (so progress is shared, not duplicated). */
+function soloChapter(idx: number, label: string): StudyModule {
+  const section = phaseKapitel57.sections[idx];
+  return {
+    id: `k${idx + 5}`,
+    label,
+    phase: { id: `${section.id}-solo`, label, weeks: `A1 · ${label}`, theme: 'info', sections: [section] },
+    flashcards: [DE_FLASHCARDS[idx]],
+    drills: [DE_DRILLS[idx]],
+    quizzes: [DE_KAPITEL_QUIZZES[idx]],
+  };
+}
 
 export const TRACKS: Track[] = [
   {
@@ -39,13 +53,27 @@ export const TRACKS: Track[] = [
   {
     id: 'german',
     label: 'German Learning',
-    description: 'A1 to B2 German — alphabet and greetings through grammar, cases, past tenses, passive voice, and conversational fluency.',
+    description: 'Goethe A1 Kapitel 5–7 — Familie & Alltag, Freizeit, Im Büro. Lessons, flashcards, drills and quizzes in one package.',
     icon: '🇩🇪',
     color: '#8B5CF6',
     darkColor: '#A78BFA',
-    phases: DE_PHASES,
-    resources: DE_RESOURCES,
-    quizzes: DE_QUIZZES,
+    phases: [],
+    resources: [],
+    studyModules: [
+      ...GERMAN_CHAPTERS_BEFORE,                 // Kapitel 1–4
+      soloChapter(0, 'Kapitel 5'),
+      soloChapter(1, 'Kapitel 6'),
+      soloChapter(2, 'Kapitel 7'),
+      ...GERMAN_CHAPTERS_AFTER,                  // Kapitel 8–12
+      {
+        id: 'kapitel',
+        label: 'Test 1',
+        phase: phaseKapitel57,
+        flashcards: DE_FLASHCARDS,
+        drills: DE_DRILLS,
+        quizzes: DE_KAPITEL_QUIZZES,
+      },
+    ],
   },
 ];
 
